@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a73e8">
+<title>タイムカード</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+/* 連続タップ時のダブルタップズームを防ぐ（打刻用） */
+button, .name-btn, .opt-btn, .menu-card, .back-btn, select { touch-action: manipulation; }
+body {
+  font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+  background: #f4f6f8;
+  color: #2b2b2b;
+}
+.screen { display: none; }
+.screen.active { display: block; }
+
+header {
+  background: #1a73e8;
+  color: #fff;
+  padding: 16px 18px;
+}
+header h1 { font-size: 17px; font-weight: 700; }
+header p { font-size: 12px; opacity: .9; margin-top: 2px; }
+.header-right {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+.btn-header {
+  background: rgba(255,255,255,.2);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.5);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+/* 打刻画面 */
+.name-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.name-btn {
+  background: #fff;
+  border: 1px solid #d9e0e8;
+  border-radius: 10px;
+  padding: 22px 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  transition: transform .1s ease, box-shadow .1s ease;
+}
+.name-btn:active { transform: scale(.97); box-shadow: 0 0 0 rgba(0,0,0,0); }
+.name-btn .role {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.name-btn .today {
+  display: block;
+  font-size: 11px;
+  color: #1a73e8;
+  margin-top: 6px;
+}
+
+/* 打刻画面下部：ヒヤリハット・事故報告（赤パネル） */
+.incident-panel {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  background: #d93025;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 20px 16px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(217,48,37,.35);
+  transition: transform .1s ease, box-shadow .1s ease;
+}
+.incident-panel:active { transform: scale(.97); box-shadow: 0 0 0 rgba(0,0,0,0); }
+.incident-panel small {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: .9;
+  margin-top: 4px;
+}
+
+/* 打刻モーダル */
+.modal-back {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  display: none; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-back.active { display: flex; }
+.modal {
+  background: #fff; border-radius: 14px; padding: 24px;
+  width: 92%; max-width: 400px; max-height: 88vh; overflow-y: auto;
+}
+.modal h2 { font-size: 18px; margin-bottom: 4px; }
+.modal .person { font-size: 13px; color: #888; margin-bottom: 16px; }
+.btn-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.big-btn {
+  flex: 1; padding: 20px 0; font-size: 18px; font-weight: 700;
+  border: none; border-radius: 10px; cursor: pointer; color: #fff;
+}
+.btn-in { background: #1a73e8; }
+.btn-out { background: #e8710a; }
+.big-btn:disabled { background: #c5ccd4; color: #eef1f5; cursor: default; }
+.btn-cancel { background: #9aa4b0; }
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.opt-row { display: flex; gap: 10px; }
+.opt-btn {
+  flex: 1; padding: 14px 0; font-size: 15px; font-weight: 600;
+  border: 2px solid #d9e0e8; border-radius: 10px; background: #fff;
+  cursor: pointer; text-align: center; color: #2b2b2b;
+}
+.opt-btn.selected { border-color: #1a73e8; background: #e8f0fe; color: #1a73e8; }
+.field input[type=text], .field input[type=password], .field textarea {
+  width: 100%; padding: 12px; border: 1px solid #d9e0e8; border-radius: 8px; font-size: 15px;
+}
+.save-btn {
+  width: 100%; padding: 16px 0; font-size: 16px; font-weight: 700;
+  background: #1a73e8; color: #fff; border: none; border-radius: 10px; cursor: pointer;
+}
+.close-btn {
+  width: 100%; padding: 12px 0; font-size: 14px;
+  background: #eef1f5; color: #555; border: none; border-radius: 10px; cursor: pointer; margin-top: 8px;
+}
+.btn-danger {
+  width: 100%; padding: 16px 0; font-size: 16px; font-weight: 700;
+  background: #d93025; color: #fff; border: none; border-radius: 10px; cursor: pointer;
+  margin-top: 10px;
+}
+
+/* パスワード */
+.pw-screen { text-align: center; padding: 40px 20px; }
+.pw-screen h2 { font-size: 18px; margin-bottom: 20px; }
+.pw-input {
+  width: 220px; padding: 14px; font-size: 20px; text-align: center;
+  border: 2px solid #1a73e8; border-radius: 10px;
+}
+.pw-btn {
+  display: block; margin: 16px auto 0; padding: 12px 40px; font-size: 15px; font-weight: 700;
+  background: #1a73e8; color: #fff; border: none; border-radius: 10px; cursor: pointer;
+}
+.pw-err { color: #d93025; font-size: 13px; margin-top: 12px; min-height: 20px; }
+
+/* 管理メニュー */
+.menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-top: 16px; }
+.menu-card {
+  background: #fff; border: 1px solid #d9e0e8; border-radius: 12px;
+  padding: 22px; cursor: pointer; transition: transform .1s ease;
+}
+.menu-card:active { transform: scale(.98); }
+.menu-card h3 { font-size: 16px; margin-bottom: 6px; }
+.menu-card p { font-size: 12px; color: #888; }
+
+/* 名簿管理 */
+.staff-list { margin-top: 14px; }
+.staff-item {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #fff; border: 1px solid #d9e0e8; border-radius: 10px;
+  padding: 12px 16px; margin-bottom: 8px;
+}
+.staff-item .name { font-weight: 600; }
+.staff-item .meta { font-size: 12px; color: #888; }
+.del-btn { background: #fce8e6; color: #d93025; border: none; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+.rec-del-btn { background: #fce8e6; color: #d93025; border: none; border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+
+/* 実績表 */
+.month-nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 16px 0; }
+.month-nav button {
+  background: #1a73e8; color: #fff; border: none; border-radius: 8px;
+  padding: 8px 16px; font-size: 14px; cursor: pointer;
+}
+.month-nav .ym { font-size: 17px; font-weight: 700; }
+.sheet {
+  background: #fff; padding: 24px; border: 1px solid #d9e0e8; border-radius: 10px;
+  margin-bottom: 20px; page-break-inside: avoid;
+}
+.sheet h2 { font-size: 16px; margin-bottom: 10px; }
+.sheet .person-line { font-size: 14px; margin-bottom: 10px; }
+table.print-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+table.print-table th, table.print-table td { border: 1px solid #555; padding: 4px 6px; text-align: center; overflow: hidden; }
+table.print-table th { background: #eef1f5; }
+table.print-table th:nth-child(1), table.print-table td:nth-child(1) { width: 10%; }  /* 日付 */
+table.print-table th:nth-child(2), table.print-table td:nth-child(2) { width: 8%; }  /* 曜日 */
+table.print-table th:nth-child(3), table.print-table td:nth-child(3) { width: 12%; } /* 出勤 */
+table.print-table th:nth-child(4), table.print-table td:nth-child(4) { width: 12%; } /* 退勤 */
+table.print-table th:nth-child(5), table.print-table td:nth-child(5) { width: 12%; } /* 休憩 */
+table.print-table th:nth-child(6), table.print-table td:nth-child(6) { width: 14%; } /* 勤務時間 */
+  table.print-table th:nth-child(7), table.print-table td:nth-child(7) { width: 16%; } /* 行き送迎 */
+  table.print-table th:nth-child(8), table.print-table td:nth-child(8) { width: 16%; } /* 帰り送迎 */
+
+/* 業務日誌 */
+.daily-sheet {
+  background: #fff; padding: 24px; border: 1px solid #d9e0e8; border-radius: 10px; margin-bottom: 20px;
+}
+.daily-sheet h2 { font-size: 17px; margin-bottom: 8px; text-align: center; }
+.daily-sheet .daily-date { font-size: 14px; margin-bottom: 16px; text-align: center; }
+.daily-summary { margin-bottom: 16px; }
+.daily-summary p { font-size: 14px; line-height: 1.9; }
+.daily-section { margin-bottom: 18px; }
+.daily-section h3 { font-size: 15px; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 2px solid #1a73e8; }
+.daily-section textarea {
+  width: 100%; padding: 12px; border: 1px solid #d9e0e8; border-radius: 8px; font-size: 14px;
+  line-height: 1.8; box-sizing: border-box; font-family: inherit;
+}
+.daily-section .small-note { font-size: 12px; color: #888; margin-bottom: 6px; }
+table.daily-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.daily-table th, table.daily-table td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; }
+table.daily-table th { background: #eef1f5; }
+.daily-count-input { width: 90px; padding: 10px; font-size: 16px; text-align: center; border: 1px solid #d9e0e8; border-radius: 8px; }
+.daily-action { margin-top: 14px; }
+
+/* 事故報告：大きなタップボタン（高齢の職員向け） */
+.inc-row { flex-wrap: wrap; }
+.inc-row .opt-btn {
+  flex: 0 0 auto; min-width: 100px; padding: 18px 12px; font-size: 16px;
+  border-radius: 12px; margin-bottom: 4px;
+}
+.inc-row .opt-btn.selected { border-width: 3px; }
+.inc-note { font-size: 14px; color: #7a6300; line-height: 1.7; }
+.inc-field input, .inc-field textarea { font-size: 17px; line-height: 1.7; }
+.inc-label { display: block; font-size: 16px; font-weight: 700; margin-bottom: 8px; color: #2b2b2b; }
+.inc-sec { margin-bottom: 22px; }
+
+/* ヘルプ・表示 */
+.notice { background: #fff8e6; border: 1px solid #f0e0b0; border-radius: 8px; padding: 12px; font-size: 12px; color: #7a6300; margin-bottom: 14px; }
+
+.back-btn { display: inline-block; margin: 10px 0; padding: 8px 16px; background: #eef1f5; border-radius: 8px; font-size: 13px; cursor: pointer; }
+
+@media print {
+  @page { size: A4; margin: 10mm; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; }
+  button { display: none !important; }
+  header, .header-right, .back-btn, .month-nav, .notice, .btn-print, .no-print { display: none !important; }
+  /* 通常印刷（月間一括・実績表）はアクティブ画面を表示 */
+  #print-daily-container:empty ~ .screen.active { display: block; }
+  /* 日別印刷時は、専用コンテナだけ表示し、他をすべて隠す */
+  #print-daily-container:not(:empty) { display: block; }
+  #print-daily-container:not(:empty) ~ .screen, #print-daily-container:not(:empty) ~ .screen.active,
+  #print-daily-container:not(:empty) ~ * { display: none !important; }
+  .container { max-width: 100%; padding: 0; }
+  .sheet { border: none; padding: 0; page-break-after: always; }
+  .sheet:last-child { page-break-after: auto; }
+  /* 印刷用コンテナ内の編集用ハイライト（青文字）を黒に */
+  #print-daily-container .print-table td { color: #000 !important; cursor: default; }
+
+  /* 業務日誌をA4に収める */
+  .daily-sheet {
+    width: 100%;
+    padding: 4mm 6mm;
+    box-sizing: border-box;
+    font-size: 11px;
+  }
+  .daily-sheet h2 { font-size: 14px; margin-bottom: 3px; }
+  .daily-sheet .daily-date { font-size: 11px; margin-bottom: 5px; }
+  .daily-sheet .daily-summary { margin-bottom: 5px; }
+  .daily-sheet .daily-summary p { font-size: 11px; line-height: 1.5; }
+  .daily-sheet .daily-section { margin-bottom: 5px; }
+  .daily-sheet .daily-section h3 { font-size: 11px; margin-bottom: 2px; }
+  .daily-sheet .daily-section p { font-size: 10.5px; line-height: 1.5; min-height: 2em; }
+  table.daily-table { font-size: 10px; }
+  table.daily-table th, table.daily-table td { padding: 2px 4px; }
+  table.daily-table tbody tr { height: auto; }
+
+  /* 事故報告書の印刷レイアウト（A4にバランスよく収める） */
+  .incident-print {
+    padding: 8mm 10mm;
+    border: none;
+    box-sizing: border-box;
+    page-break-after: auto;
+  }
+  .incident-print h2 {
+    text-align: center;
+    font-size: 17px;
+    letter-spacing: .5px;
+    border-bottom: 2px solid #d93025;
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+  .incident-print table.print-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .incident-print table.print-table th,
+  .incident-print table.print-table td {
+    border: 1px solid #444;
+    padding: 12px 14px;
+    vertical-align: middle;
+    line-height: 1.8;
+    text-align: left;
+    box-sizing: border-box;
+  }
+  .incident-print table.print-table th {
+    width: 24%;
+    background: #fdecec;
+    font-weight: 700;
+    font-size: 12.5px;
+  }
+  .incident-print table.print-table td {
+    width: 76%;
+    font-size: 13px;
+    word-break: break-word;
+  }
+  .incident-print table.print-table tbody tr { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<!-- 日別印刷用コンテナ（印刷時のみ使用） -->
+<div id="print-daily-container"></div>
+
+<!-- ヘッダー -->
+<header>
+  <div class="header-right"><button class="btn-header" onclick="showManageEntry()">管理者</button></div>
+  <h1>就労継続支援B型ココロオドル</h1>
+  <p>勤退管理</p>
+</header>
+
+<!-- ===== 打刻画面 ===== -->
+<div id="screen-main" class="screen active">
+  <div class="container">
+    <div id="todayLine" class="notice"></div>
+    <div id="nameList" class="name-list"></div>
+    <button class="incident-panel" onclick="openIncidentForm()">
+      ヒヤリハット・事故報告
+      <small>なにかあったら、ここからすぐに報告できます</small>
+    </button>
+  </div>
+</div>
+
+<!-- ===== 管理者入口（パスワード） ===== -->
+<div id="screen-manage-entry" class="screen">
+  <div class="container pw-screen">
+    <h2>管理者用パスワード</h2>
+    <input id="managePw" class="pw-input" type="password" inputmode="numeric" onkeydown="if (event.key === 'Enter') checkManagePw()">
+    <button class="pw-btn" onclick="checkManagePw()">ログイン</button>
+    <p class="pw-err" id="managePwErr"></p>
+    <button class="back-btn" onclick="showScreen('screen-main')">← 戻る</button>
+  </div>
+</div>
+
+<!-- ===== 管理者メニュー ===== -->
+<div id="screen-manage-menu" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-main')">← 打刻画面へ</button>
+    <div class="menu-grid">
+      <div class="menu-card" onclick="showScreen('screen-records')"><h3>月間実績表</h3><p>確認・修正・印刷</p></div>
+      <div class="menu-card" onclick="showScreen('screen-staff')"><h3>名簿管理</h3><p>職員・利用者の追加・削除</p></div>
+      <div class="menu-card" onclick="showScreen('screen-daily')"><h3>業務日誌</h3><p>日別の活動記録・入力</p></div>
+      <div class="menu-card" onclick="showScreen('screen-incident')"><h3>ヒヤリハット・事故報告</h3><p>報告書の作成・一覧・印刷</p></div>
+      <div class="menu-card" onclick="showScreen('screen-template')"><h3>活動テンプレート</h3><p>午前・午後の基本活動を設定</p></div>
+      <div class="menu-card" onclick="showScreen('screen-export')"><h3>PDF出力・印刷</h3><p>1か月分の実績・業務日誌を印刷</p></div>
+      <div class="menu-card" onclick="showScreen('screen-backup')"><h3>データバックアップ</h3><p>全データの書き出し・取り込み</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 業務日誌 ===== -->
+<div id="screen-daily" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
+    <h2>業務日誌</h2>
+    <div class="month-nav">
+      <button onclick="changeDaily(-1)">◀ 前日</button>
+      <span class="ym" id="dailyDate"></span>
+      <button onclick="changeDaily(1)">翌日 ▶</button>
+    </div>
+    <button class="save-btn" style="margin-bottom:14px;" onclick="printDaily()">この日のPDF出力・印刷</button>
+    <div id="dailyForm"></div>
+  </div>
+</div>
+
+<!-- ===== ヒヤリハット・事故報告 一覧 ===== -->
+<div id="screen-incident" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-daily')">← 業務日誌へ</button>
+    <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
+    <h2>ヒヤリハット・事故報告書</h2>
+    <button class="save-btn" style="margin-bottom:14px;" onclick="openIncidentForm()">新規報告書を作成</button>
+    <div id="incidentList" class="staff-list"></div>
+  </div>
+</div>
+
+<!-- ===== ヒヤリハット・事故報告 フォーム ===== -->
+<div id="screen-incident-form" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-incident')">← 報告書一覧へ</button>
+    <h2 id="incidentFormTitle">ヒヤリハット・事故報告書</h2>
+    <div id="incidentForm"></div>
+  </div>
+</div>
+
+<!-- ===== 活動テンプレート ===== -->
+<div id="screen-template" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
+    <h2>活動テンプレート</h2>
+    <p class="notice">毎日の業務日誌に自動で入る、午前・午後の基本活動内容を設定します。</p>
+    <div class="field">
+      <label>午前の活動内容（テンプレート）</label>
+      <textarea id="tmplMorning" rows="3" placeholder="例：作業（内職・清掃など）、体操、ミーティング" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px"></textarea>
+    </div>
+    <div class="field">
+      <label>午後の活動内容（テンプレート）</label>
+      <textarea id="tmplAfternoon" rows="3" placeholder="例：作業（内職・清掃など）、レクリエーション、振り返り" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px"></textarea>
+    </div>
+    <button class="save-btn" onclick="saveTemplate()">テンプレートを保存</button>
+  </div>
+</div>
+
+<!-- ===== 月間実績（管理者） ===== -->
+<div id="screen-records" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
+    <div class="notice">打刻ミス・打ち忘れは、下の表の出勤・退勤・休憩のマス目をタップすると修正できます。</div>
+    <div class="month-nav">
+      <button onclick="changeMonth(-1)">◀ 前月</button>
+      <span class="ym" id="recordYM"></span>
+      <button onclick="changeMonth(1)">次月 ▶</button>
+    </div>
+    <div id="recordList"></div>
+  </div>
+</div>
+
+<!-- ===== 名簿管理 ===== -->
+<div id="screen-staff" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
+    <h2>名簿管理</h2>
+    <div class="field">
+      <label>名前</label>
+      <input id="newName" type="text" placeholder="氏名" onkeydown="if (event.key === 'Enter') addStaff()">
+    </div>
+    <div class="field">
+      <label>区分</label>
+      <div class="opt-row">
+        <div class="opt-btn" data-role="職員" onclick="selectRole(this)">職員</div>
+        <div class="opt-btn selected" data-role="利用者" onclick="selectRole(this)">利用者</div>
+      </div>
+    </div>
+    <button class="save-btn" onclick="addStaff()">追加</button>
+    <div id="staffList" class="staff-list"></div>
+  </div>
+</div>
+
+<!-- ===== 出力・印刷 ===== -->
+<div id="screen-export" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
+    <h2>PDF出力・印刷</h2>
+    <div class="notice">印刷プレビューを表示します。ブラウザの「印刷」でPDF保存・印刷できます。印刷ダイアログで用紙をA4に設定してください。</div>
+    <div class="month-nav">
+      <button onclick="changeMonthExport(-1)">◀ 前月</button>
+      <span class="ym" id="exportYM"></span>
+      <button onclick="changeMonthExport(1)">次月 ▶</button>
+    </div>
+    <div class="opt-row" style="max-width:400px;margin:0 auto 16px;">
+      <div class="opt-btn selected" data-etype="record" onclick="selectExportType(this)">勤退実績表</div>
+      <div class="opt-btn" data-etype="daily" onclick="selectExportType(this)">業務日誌</div>
+    </div>
+    <button class="save-btn" onclick="doPrint()">印刷 / PDF保存</button>
+    <div id="exportList"></div>
+  </div>
+</div>
+
+<!-- ===== データバックアップ ===== -->
+<div id="screen-backup" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
+    <h2>データバックアップ</h2>
+    <div class="notice">すべてのデータはこの端末のブラウザ内に保存されています。端末の故障・ブラウザのデータ削除に備え、定期的に書き出してください。端末やブラウザを変えたときは、書き出したファイルを取り込みます。</div>
+    <button class="save-btn" style="margin-bottom:18px;" onclick="exportBackup()">バックアップを書き出す（ファイル保存）</button>
+    <div class="field">
+      <label>バックアップファイル（JSON）を選ぶ</label>
+      <input id="backupFile" type="file" accept=".json,application/json" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;background:#fff">
+    </div>
+    <button class="btn-danger" style="width:100%;padding:16px 0;font-size:16px;font-weight:700;background:#d93025;color:#fff;border:none;border-radius:10px;cursor:pointer;margin-top:10px" onclick="importBackup()">取り込む（現在のデータは上書きされます）</button>
+  </div>
+</div>
+
+<!-- ===== 打刻モーダル ===== -->
+<div id="modal-back" class="modal-back" onclick="if (event.target === this) closeModal()">
+  <div class="modal">
+    <h2 id="modalTitle">打刻</h2>
+    <p class="person" id="modalPerson"></p>
+    <p class="person" id="modalStatus" style="color:#1a73e8;margin-bottom:14px"></p>
+    <div class="btn-row">
+      <button id="btnIn" class="big-btn btn-in" onclick="tapIn()">出勤</button>
+      <button id="btnOut" class="big-btn btn-out" onclick="tapOut()">退勤</button>
+    </div>
+    <div class="field">
+      <label>行きの送迎</label>
+      <div class="opt-row">
+        <div class="opt-btn selected" data-f="morning" data-v="1" onclick="selectOpt(this)">あり</div>
+        <div class="opt-btn" data-f="morning" data-v="0" onclick="selectOpt(this)">なし</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>帰りの送迎</label>
+      <div class="opt-row">
+        <div class="opt-btn selected" data-f="evening" data-v="1" onclick="selectOpt(this)">あり</div>
+        <div class="opt-btn" data-f="evening" data-v="0" onclick="selectOpt(this)">なし</div>
+      </div>
+    </div>
+    <button class="save-btn" onclick="saveStamp()">保存</button>
+    <button class="close-btn" onclick="closeModal()">閉じる</button>
+  </div>
+</div>
+
+<script>
+// ============ データ ============
+var PASSWORDS = ["5560", "0556", "556"];
+var STAFF_KEY = "koko_staff";
+var RECORDS_KEY = "koko_records";
+var DAILY_KEY = "koko_daily";
+var TEMPLATE_KEY = "koko_template";
+
+function loadTemplate() {
+  try {
+    var t = JSON.parse(localStorage.getItem(TEMPLATE_KEY));
+    if (t) return t;
+  } catch(e) {}
+  return { morning: "", afternoon: "" };
+}
+function saveTemplateData(obj) { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(obj)); }
+function loadDaily() {
+  try { return JSON.parse(localStorage.getItem(DAILY_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function saveDaily(obj) { localStorage.setItem(DAILY_KEY, JSON.stringify(obj)); }
+
+function loadStaff() {
+  try { return JSON.parse(localStorage.getItem(STAFF_KEY)) || []; }
+  catch(e) { return []; }
+}
+function saveStaff(list) { localStorage.setItem(STAFF_KEY, JSON.stringify(list)); }
+function loadRecords() {
+  try { return JSON.parse(localStorage.getItem(RECORDS_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function saveRecords(obj) { localStorage.setItem(RECORDS_KEY, JSON.stringify(obj)); }
+
+var WEEK = ["日","月","火","水","木","金","土"];
+
+function todayStr() {
+  var d = new Date();
+  return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+}
+function pad(n) { return String(n).padStart(2,"0"); }
+
+// ============ 画面遷移 ============
+function showScreen(id) {
+  var cur = document.querySelector(".screen.active");
+  if (cur && cur.id === "screen-daily" && id !== "screen-daily" && dailyFormDirty()) {
+    if (!confirm("業務日誌の入力内容はまだ保存されていません。移動すると失われます。移動しますか？")) return;
+  }
+  if (cur && cur.id === "screen-incident-form" && id !== "screen-incident-form" && incidentFormDirty()) {
+    if (!confirm("事故報告書の入力内容はまだ保存されていません。移動すると失われます。移動しますか？")) return;
+  }
+  document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("active"); });
+  document.getElementById(id).classList.add("active");
+  window.scrollTo(0, 0);
+  if (id === "screen-main") renderNameList();
+  if (id === "screen-records") renderRecords();
+  if (id === "screen-staff") renderStaff();
+  if (id === "screen-export") renderExport();
+  if (id === "screen-daily") renderDaily();
+  if (id === "screen-incident") renderIncidentList();
+  if (id === "screen-template") renderTemplateForm();
+}
+
+// ============ 打刻画面 ============
+function renderNameList() {
+  var t = new Date();
+  document.getElementById("todayLine").textContent =
+    "今日：" + t.getFullYear() + "年" + (t.getMonth()+1) + "月" + t.getDate() + "日（" + WEEK[t.getDay()] + "） 名前をタップして打刻してください";
+  var list = loadStaff().filter(function(p){ return !p.retired; });
+  var html = "";
+  list.forEach(function(p) {
+    var rec = getTodayRecord(p.id);
+    var status = "";
+    if (rec && rec.in) status = "出勤 " + rec.in;
+    if (rec && rec.out) status += " ／ 退勤 " + rec.out;
+    html += '<div class="name-btn" onclick="openModal(\'' + p.id + '\')">' +
+      escapeHtml(p.name) +
+      '<span class="role">' + p.role + '</span>' +
+      (status ? '<span class="today">' + status + '</span>' : '') +
+      '</div>';
+  });
+  document.getElementById("nameList").innerHTML = html || '<p>名簿が空です。管理者画面から追加してください。</p>';
+}
+
+function getTodayRecord(id) {
+  var recs = loadRecords();
+  var key = todayStr() + "|" + id;
+  return recs[key] || null;
+}
+
+// ============ 打刻モーダル ============
+var currentPerson = null;
+
+function openModal(id) {
+  var list = loadStaff();
+  var person = null;
+  list.forEach(function(p){ if (p.id === id) person = p; });
+  if (!person) return;
+  currentPerson = person;
+  document.getElementById("modalTitle").textContent = "打刻";
+  document.getElementById("modalPerson").textContent = currentPerson.name + "（" + currentPerson.role + "）";
+  // 本日の打刻状況を表示（二重打刻の防止）
+  var rec = getTodayRecord(id);
+  var statusTxt = "本日の打刻：まだありません";
+  if (rec) {
+    var parts = [];
+    if (rec.in) parts.push("出勤 " + rec.in);
+    if (rec.out) parts.push("退勤 " + rec.out);
+    if (!parts.length) parts.push("（出勤・退勤なし）");
+    statusTxt = "本日の打刻：" + parts.join(" ／ ");
+  }
+  document.getElementById("modalStatus").textContent = statusTxt;
+  // 二重打刻はできない：すでに打刻済みのボタンは無効化
+  document.getElementById("btnIn").disabled = !!(rec && rec.in);
+  document.getElementById("btnOut").disabled = !!(rec && rec.out);
+  // 送迎デフォルト：あり
+  document.querySelectorAll("#modal-back .opt-btn").forEach(function(b){
+    if (b.dataset.v === "1") b.classList.add("selected");
+    else b.classList.remove("selected");
+  });
+  // すでに打刻済みの値は送迎ボタンに反映
+  if (rec) {
+    document.querySelectorAll("#modal-back .opt-btn[data-f='morning']").forEach(function(b){
+      if (Number(b.dataset.v) === (rec.morning ? 1 : 0)) b.classList.add("selected");
+      else b.classList.remove("selected");
+    });
+    document.querySelectorAll("#modal-back .opt-btn[data-f='evening']").forEach(function(b){
+      if (Number(b.dataset.v) === (rec.evening ? 1 : 0)) b.classList.add("selected");
+      else b.classList.remove("selected");
+    });
+  }
+  document.getElementById("modal-back").classList.add("active");
+}
+function closeModal() { document.getElementById("modal-back").classList.remove("active"); currentPerson = null; }
+
+function tapIn() { saveStamp("in"); }
+function tapOut() { saveStamp("out"); }
+
+function saveStamp(kind) {
+  if (!currentPerson) return;
+  var person = currentPerson;
+  var now = new Date();
+  var time = pad(now.getHours()) + ":" + pad(now.getMinutes());
+  var recs = loadRecords();
+  var key = todayStr() + "|" + person.id;
+  if (!recs[key]) {
+    recs[key] = { date: todayStr(), id: person.id, in: null, out: null, morning: 1, evening: 1, break: 60 };
+  }
+  // 二重打刻はできない（ボタン無効化に加えて、直接呼び出しでも拒否）
+  if (kind === "in" && recs[key].in) { alert(person.name + "さんはすでに出勤打刻済みです（" + recs[key].in + "）。\n修正は管理者の「月間実績表」で行ってください。"); return; }
+  if (kind === "out" && recs[key].out) { alert(person.name + "さんはすでに退勤打刻済みです（" + recs[key].out + "）。\n修正は管理者の「月間実績表」で行ってください。"); return; }
+  if (kind === "in") recs[key].in = time;
+  if (kind === "out") recs[key].out = time;
+  recs[key].morning = getOpt("morning");
+  recs[key].evening = getOpt("evening");
+  if (typeof recs[key].break === "undefined" || recs[key].break === null) recs[key].break = 60;
+  saveRecords(recs);
+  closeModal();
+  renderNameList();
+  var label = kind === "in" ? "出勤" : kind === "out" ? "退勤" : "送迎";
+  alert(label + "を記録しました：" + person.name + " " + time);
+}
+
+function getOpt(field) {
+  var el = document.querySelector('#modal-back .opt-btn[data-f="' + field + '"].selected');
+  return el ? Number(el.dataset.v) : 1;
+}
+
+// ============ 送迎・区分選択 ============
+function selectOpt(el) {
+  var field = el.dataset.f;
+  document.querySelectorAll('#modal-back .opt-btn[data-f="' + field + '"]').forEach(function(b){
+    b.classList.remove("selected");
+  });
+  el.classList.add("selected");
+}
+
+var selectedRole = "利用者";
+function selectRole(el) {
+  selectedRole = el.dataset.role;
+  document.querySelectorAll('#screen-staff .opt-btn[data-role]').forEach(function(b){
+    b.classList.remove("selected");
+  });
+  el.classList.add("selected");
+}
+
+// ============ 管理者 ============
+function showManageEntry() { showScreen("screen-manage-entry"); document.getElementById("managePw").value=""; document.getElementById("managePwErr").textContent=""; }
+function checkManagePw() {
+  var v = document.getElementById("managePw").value;
+  if (PASSWORDS.indexOf(v) >= 0) { showScreen("screen-manage-menu"); }
+  else { document.getElementById("managePwErr").textContent = "パスワードが違います"; }
+}
+
+// ============ 名簿管理 ============
+function addStaff() {
+  var name = document.getElementById("newName").value.trim();
+  if (!name) { alert("名前を入力してください"); return; }
+  var list = loadStaff();
+  // 同名の重複登録を防ぐ
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].name === name) { alert("同じ名前の人がすでに登録されています"); return; }
+  }
+  list.push({ id: Date.now().toString(36), name: name, role: selectedRole, retired: false });
+  saveStaff(list);
+  document.getElementById("newName").value = "";
+  renderStaff();
+}
+// 退職にする（名簿・打刻画面からは消えるが、過去の実績・日誌・報告書はすべて残る）
+function delStaff(id) {
+  if (!confirm("この人を「退職」にしますか？\n打刻画面には表示されなくなりますが、過去の実績・日誌・報告書はすべて残ります。\n（完全に消したい場合は名簿に残ったままにせず、退職後も履歴が残るのが正しい運用です）")) return;
+  var list = loadStaff();
+  list.forEach(function(p){ if (p.id === id) p.retired = true; });
+  saveStaff(list);
+  renderStaff();
+}
+// 退職者を打刻画面に戻す
+function restoreStaff(id) {
+  if (!confirm("この人を打刻画面に戻しますか？（退職を取り消し）")) return;
+  var list = loadStaff();
+  list.forEach(function(p){ if (p.id === id) p.retired = false; });
+  saveStaff(list);
+  renderStaff();
+}
+function renderStaff() {
+  var list = loadStaff();
+  var html = "";
+  list.forEach(function(p) {
+    html += '<div class="staff-item">' +
+      '<div><div class="name">' + escapeHtml(p.name) + (p.retired ? ' <span style="color:#d93025">（退職）</span>' : '') + '</div><div class="meta">' + p.role + '</div></div>';
+    if (p.retired) {
+      html += '<button class="del-btn" style="background:#e8f0fe;color:#1a73e8" onclick="restoreStaff(\'' + p.id + '\')">復帰</button>';
+    } else {
+      html += '<button class="del-btn" onclick="delStaff(\'' + p.id + '\')">退職</button>';
+    }
+    html += '</div>';
+  });
+  document.getElementById("staffList").innerHTML = html || "<p>登録された人はいません</p>";
+}
+
+// ============ 月間実績 ============
+var currentYM = currentYMKey();
+function currentYMKey() {
+  var d = new Date();
+  return d.getFullYear() + "-" + pad(d.getMonth()+1);
+}
+function changeMonth(delta) {
+  var parts = currentYM.split("-");
+  var y = Number(parts[0]), m = Number(parts[1]) + delta;
+  if (m < 1) { m = 12; y--; }
+  if (m > 12) { m = 1; y++; }
+  currentYM = y + "-" + pad(m);
+  renderRecords();
+}
+function changeMonthExport(delta) {
+  var parts = currentYM.split("-");
+  var y = Number(parts[0]), m = Number(parts[1]) + delta;
+  if (m < 1) { m = 12; y--; }
+  if (m > 12) { m = 1; y++; }
+  currentYM = y + "-" + pad(m);
+  renderExport();
+}
+
+function monthDays(ym) {
+  var parts = ym.split("-");
+  return new Date(Number(parts[0]), Number(parts[1]), 0).getDate();
+}
+
+function buildSheet(person, ym, isPrint) {
+  var days = monthDays(ym);
+  var html = '<div class="sheet">';
+  html += '<h2>【就労継続支援B型ココロオドル 勤退実績表】</h2>';
+  html += '<p class="person-line">氏名：' + escapeHtml(person.name) + '（' + person.role + '）　　期間：' + ym.split("-")[0] + "年" + Number(ym.split("-")[1]) + "月</p>";
+  html += '<table class="print-table"><thead><tr><th>日付</th><th>曜日</th><th>出勤</th><th>退勤</th><th>休憩</th><th>勤務時間</th><th>行き送迎</th><th>帰り送迎</th>' + (isPrint ? '' : '<th class="no-print">削除</th>') + '</tr></thead><tbody>';
+  var recs = loadRecords();
+  var totalMin = 0;
+  for (var d = 1; d <= days; d++) {
+    var key = ym + "-" + pad(d) + "|" + person.id;
+    var r = recs[key] || null;
+    var wk = WEEK[new Date(Number(ym.split("-")[0]), Number(ym.split("-")[1])-1, d).getDay()];
+    var inT = r && r.in ? r.in : "";
+    var outT = r && r.out ? r.out : "";
+    var isStaff = (person.role === "職員");
+    var breakMin = 0;
+    var workH = "";
+    var workErr = false;
+    if (!isStaff && r && typeof r.break !== "undefined") breakMin = Number(r.break);
+    if (r && r.in && r.out) {
+      var diff = timeToMin(r.out) - timeToMin(r.in) - breakMin;
+      if (diff > 0) { totalMin += diff; workH = minToHM(diff); }
+      else { workH = "要確認"; workErr = true; }
+    }
+    // 出勤・退勤はタップで編集可能（打刻忘れの日も、レコードが無い日は新規作成される）
+    var inCell = '<td onclick="editTime(\'' + key + '\',\'in\')" style="cursor:pointer;color:#1a73e8" title="タップして編集">' + (inT || "ー") + '</td>';
+    var outCell = '<td onclick="editTime(\'' + key + '\',\'out\')" style="cursor:pointer;color:#1a73e8" title="タップして編集">' + (outT || "ー") + '</td>';
+    var breakCell = '<td></td>';
+    if (r && !isStaff) {
+      breakCell = '<td onclick="editBreak(\'' + key + '\')" style="cursor:pointer" title="タップして編集">' + (breakMin ? minToHM(breakMin) : "なし") + '</td>';
+    } else if (!isStaff) {
+      breakCell = '<td onclick="editBreak(\'' + key + '\')" style="cursor:pointer;color:#9aa4b0" title="タップして編集">なし</td>';
+    }
+    // 行き・帰り送迎はタップで編集可能（レコードが無い日も新規作成される）
+    var moCell = '<td onclick="editTransfer(\'' + key + '\',\'morning\')" style="cursor:pointer;color:#1a73e8" title="タップして編集">' + (r && r.morning ? "○" : "×") + '</td>';
+    var evCell = '<td onclick="editTransfer(\'' + key + '\',\'evening\')" style="cursor:pointer;color:#1a73e8" title="タップして編集">' + (r && r.evening ? "○" : "×") + '</td>';
+    var workCell = workErr
+      ? '<td style="color:#d93025;font-weight:700">要確認</td>'
+      : '<td>' + workH + '</td>';
+    var delCell = (r && !isPrint)
+      ? '<td class="no-print"><button class="rec-del-btn" onclick="delRecord(\'' + key + '\')">削除</button></td>'
+      : '<td></td>';
+    var cls = (wk === "日" || wk === "土") ? ' style="background:#f7f7f7"' : "";
+    html += '<tr' + cls + '><td>' + (ym.split("-")[1]) + "/" + d + '</td><td>' + wk + '</td>' + inCell + outCell + breakCell + workCell + moCell + evCell + delCell + '</tr>';
+  }
+  html += '<tr style="background:#eef1f5;font-weight:700"><td colspan="5">月間勤務時間合計</td><td>' + minToHM(totalMin) + '</td><td colspan="2"></td>' + (isPrint ? '' : '<td class="no-print"></td>') + '</tr>';
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// レコードが無い日でもタップ編集から新規作成できるようにする
+function ensureRecord(recs, key) {
+  if (!recs[key]) {
+    var parts = key.split("|");
+    recs[key] = { date: parts[0], id: parts[1], in: null, out: null, morning: 1, evening: 1, break: 60 };
+  }
+  return recs[key];
+}
+
+// 打刻したけど休みに戻す＝その日の記録を丸ごと削除
+function delRecord(key) {
+  if (!confirm("この日の記録（打刻・送迎・休憩）をすべて削除しますか？\n休みに戻す場合に使います。この操作は取り消せません。")) return;
+  var recs = loadRecords();
+  delete recs[key];
+  saveRecords(recs);
+  renderRecords();
+  renderExport();
+}
+
+function editBreak(key) {
+  var recs = loadRecords();
+  var r = ensureRecord(recs, key);
+  var cur = (typeof r.break !== "undefined") ? Number(r.break) : 60;
+  var input = prompt("休憩時間を分で入力（例：60 = 1時間、30 = 30分、0 = なし）\n現在：" + cur + "分", String(cur));
+  if (input === null) return;
+  var v = parseInt(input, 10);
+  if (isNaN(v) || v < 0) { alert("0以上の数字で入力してください"); return; }
+  r.break = v;
+  saveRecords(recs);
+  renderRecords();
+  renderExport();
+}
+
+function editTime(key, field) {
+  var recs = loadRecords();
+  var r = ensureRecord(recs, key);
+  var cur = r[field] || "";
+  var label = field === "in" ? "出勤" : "退勤";
+  var input = prompt(label + "時間を入力（例：09:00、17:30）\n現在：" + (cur || "未入力"), cur || "09:00");
+  if (input === null) return;
+  var v = input.trim();
+  if (v === "") {
+    r[field] = "";
+    saveRecords(recs);
+    renderRecords();
+    renderExport();
+    return;
+  }
+  if (!/^\d{1,2}:\d{2}$/.test(v)) { alert("HH:MM 形式で入力してください（例：09:00）"); return; }
+  var parts = v.split(":");
+  var hh = Number(parts[0]), mm = Number(parts[1]);
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { alert("時刻が不正です（例：09:00・23:59）"); return; }
+  r[field] = pad(hh) + ":" + pad(mm);
+  saveRecords(recs);
+  renderRecords();
+  renderExport();
+}
+
+function editTransfer(key, field) {
+  var recs = loadRecords();
+  var r = ensureRecord(recs, key);
+  var label = field === "morning" ? "行きの送迎" : "帰りの送迎";
+  var cur = r[field] ? "あり" : "なし";
+  var next = r[field] ? 0 : 1;
+  var makeOn = confirm(label + "を「" + (next ? "あり" : "なし") + "」に変更しますか？\n現在：" + cur + "\n\n[OK] " + (next ? "あり" : "なし") + "に変更\n[キャンセル] 変更しない");
+  if (!makeOn) return;
+  r[field] = next;
+  saveRecords(recs);
+  renderRecords();
+  renderExport();
+}
+
+function timeToMin(t) {
+  var p = t.split(":");
+  return Number(p[0]) * 60 + Number(p[1]);
+}
+function minToHM(min) {
+  var h = Math.floor(min / 60);
+  var m = min % 60;
+  return h + "時間" + (m ? m + "分" : "");
+}
+
+function renderRecords() {
+  document.getElementById("recordYM").textContent = currentYM;
+  var list = loadStaff();
+  var html = "";
+  list.forEach(function(p) { html += buildSheet(p, currentYM); });
+  document.getElementById("recordList").innerHTML = html || "<p>名簿が空です</p>";
+}
+
+// ============ 出力・印刷 ============
+var exportType = "record";
+function selectExportType(el) {
+  exportType = el.dataset.etype;
+  document.querySelectorAll('#screen-export .opt-btn[data-etype]').forEach(function(b){ b.classList.remove("selected"); });
+  el.classList.add("selected");
+  renderExport();
+}
+function renderExport() {
+  document.getElementById("exportYM").textContent = currentYM;
+  var list = loadStaff();
+  var html = "";
+  if (exportType === "record") {
+    list.forEach(function(p) { html += buildSheet(p, currentYM); });
+  } else {
+    html = buildDailySheetsForMonth(currentYM);
+  }
+  document.getElementById("exportList").innerHTML = html;
+}
+function doPrint() {
+  if (exportType === "daily") {
+    var html = buildDailySheetsForMonth(currentYM);
+    document.getElementById("print-daily-container").innerHTML = html;
+    window.print();
+    document.getElementById("print-daily-container").innerHTML = "";
+  } else {
+    var list = loadStaff();
+    var html = "";
+    list.forEach(function(p) { html += buildSheet(p, currentYM, true); });
+    document.getElementById("print-daily-container").innerHTML = html;
+    window.print();
+    document.getElementById("print-daily-container").innerHTML = "";
+  }
+}
+
+function buildDailySheetsForMonth(ym) {
+  var days = monthDays(ym);
+  var html = "";
+  for (var d = 1; d <= days; d++) {
+    var ymd = ym + "-" + pad(d);
+    html += buildDailySheet(ymd);
+  }
+  return html;
+}
+
+function buildDailySheet(ymd) {
+  var list = loadStaff();
+  var recs = loadRecords();
+  var daily = loadDaily();
+  var tpl = loadTemplate();
+  var d = daily[ymd] || { absentCount: 0, morningNote: "", afternoonNote: "", specialNote: "", contactNote: "" };
+
+  var users = list.filter(function(p){ return p.role === "利用者"; });
+  var staff = list.filter(function(p){ return p.role === "職員"; });
+
+  var userRows = "";
+  var userCount = 0, morningSum = 0, eveningSum = 0;
+  users.forEach(function(p) {
+    var key = ymd + "|" + p.id;
+    var r = recs[key] || null;
+    var inT = r && r.in ? r.in : "";
+    var outT = r && r.out ? r.out : "";
+    var mo = r ? (r.morning ? "○" : "×") : "";
+    var ev = r ? (r.evening ? "○" : "×") : "";
+    if (r && r.in) { userCount++; if (r.morning) morningSum++; if (r.evening) eveningSum++; }
+    userRows += '<tr><td>' + escapeHtml(p.name) + '</td><td>' + inT + '</td><td>' + outT + '</td><td>' + mo + '</td><td>' + ev + '</td></tr>';
+  });
+
+  var staffRows = "";
+  staff.forEach(function(p) {
+    var key = ymd + "|" + p.id;
+    var r = recs[key] || null;
+    var inT = r && r.in ? r.in : "";
+    var outT = r && r.out ? r.out : "";
+    staffRows += '<tr><td>' + escapeHtml(p.name) + '</td><td>' + inT + '</td><td>' + outT + '</td></tr>';
+  });
+
+  var morningVal = (d.morningNote !== undefined && d.morningNote !== null && d.morningNote !== "") ? d.morningNote : tpl.morning;
+  var afternoonVal = (d.afternoonNote !== undefined && d.afternoonNote !== null && d.afternoonNote !== "") ? d.afternoonNote : tpl.afternoon;
+  if (d.morningNote === "") morningVal = "";
+  if (d.afternoonNote === "") afternoonVal = "";
+
+  var html = '<div class="sheet daily-sheet">';
+  html += '<h2>【就労継続支援B型ココロオドル 業務日誌】</h2>';
+  html += '<p class="person-line" style="text-align:center">' + dailyDateLabel(ymd) + '</p>';
+  html += '<div class="daily-summary">';
+  html += '<p>利用者数合計：' + userCount + ' 名　行き送迎合計：' + morningSum + ' 名　帰り送迎合計：' + eveningSum + ' 名　欠席時対応合計：' + (d.absentCount || 0) + ' 件</p>';
+  html += '</div>';
+  html += '<div class="daily-section"><h3>利用者の出勤状況</h3>';
+  html += '<table class="daily-table"><thead><tr><th>氏名</th><th>出勤</th><th>退勤</th><th>行き送迎</th><th>帰り送迎</th></tr></thead><tbody>';
+  html += userRows || '<tr><td colspan="5">利用者なし</td></tr>';
+  html += '</tbody></table></div>';
+  html += '<div class="daily-section"><h3>職員の出勤状況</h3>';
+  html += '<table class="daily-table"><thead><tr><th>氏名</th><th>出勤</th><th>退勤</th></tr></thead><tbody>';
+  html += staffRows || '<tr><td colspan="3">職員なし</td></tr>';
+  html += '</tbody></table></div>';
+  html += '<div class="daily-section"><h3>午前の活動内容</h3><p>' + escapeHtml(morningVal).replace(/\n/g,"<br>") + '</p></div>';
+  html += '<div class="daily-section"><h3>午後の活動内容</h3><p>' + escapeHtml(afternoonVal).replace(/\n/g,"<br>") + '</p></div>';
+  html += '<div class="daily-section"><h3>特記事項</h3><p>' + (d.specialNote ? escapeHtml(d.specialNote).replace(/\n/g,"<br>") : "&nbsp;") + '</p></div>';
+  html += '<div class="daily-section"><h3>連絡事項</h3><p>' + (d.contactNote ? escapeHtml(d.contactNote).replace(/\n/g,"<br>") : "&nbsp;") + '</p></div>';
+  html += '</div>';
+  return html;
+}
+
+// ============ 表示ヘルパー ============
+function escapeHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ============ 業務日誌 ============
+var currentDaily = todayStr();
+
+function dailyDateLabel(ymd) {
+  var p = ymd.split("-");
+  var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  return p[0] + "年" + Number(p[1]) + "月" + Number(p[2]) + "日（" + WEEK[d.getDay()] + "）";
+}
+
+function changeDaily(delta) {
+  if (dailyFormDirty() && !confirm("業務日誌の入力内容はまだ保存されていません。移動すると失われます。移動しますか？")) return;
+  var p = currentDaily.split("-");
+  var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]) + delta);
+  currentDaily = d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+  renderDaily();
+}
+
+function renderDaily() {
+  document.getElementById("dailyDate").textContent = dailyDateLabel(currentDaily);
+  var list = loadStaff();
+  var recs = loadRecords();
+  var daily = loadDaily();
+  var tpl = loadTemplate();
+  var d = daily[currentDaily] || { absentCount: 0, morningNote: "", afternoonNote: "", specialNote: "", contactNote: "" };
+  // テンプレートは「未保存・空欄のとき」だけ自動入力。空欄で保存した場合は空欄のまま表示・印刷される
+  var morningVal = (d.morningNote !== undefined && d.morningNote !== null && d.morningNote !== "") ? d.morningNote : tpl.morning;
+  var afternoonVal = (d.afternoonNote !== undefined && d.afternoonNote !== null && d.afternoonNote !== "") ? d.afternoonNote : tpl.afternoon;
+  // 空欄で保存した「活動なし」を表示する
+  if (d.morningNote === "") morningVal = "";
+  if (d.afternoonNote === "") afternoonVal = "";
+
+  var users = list.filter(function(p){ return p.role === "利用者"; });
+  var staff = list.filter(function(p){ return p.role === "職員"; });
+
+  var userRows = "";
+  var userCount = 0, morningSum = 0, eveningSum = 0;
+  users.forEach(function(p) {
+    var key = currentDaily + "|" + p.id;
+    var r = recs[key] || null;
+    var inT = r && r.in ? r.in : "";
+    var outT = r && r.out ? r.out : "";
+    var mo = r ? (r.morning ? "○" : "×") : "";
+    var ev = r ? (r.evening ? "○" : "×") : "";
+    if (r && r.in) { userCount++; if (r.morning) morningSum++; if (r.evening) eveningSum++; }
+    userRows += '<tr><td>' + escapeHtml(p.name) + '</td><td>' + inT + '</td><td>' + outT + '</td><td>' + mo + '</td><td>' + ev + '</td></tr>';
+  });
+
+  var staffRows = "";
+  staff.forEach(function(p) {
+    var key = currentDaily + "|" + p.id;
+    var r = recs[key] || null;
+    var inT = r && r.in ? r.in : "";
+    var outT = r && r.out ? r.out : "";
+    staffRows += '<tr><td>' + escapeHtml(p.name) + '</td><td>' + inT + '</td><td>' + outT + '</td></tr>';
+  });
+
+  var html = '<div class="daily-sheet">';
+  html += '<h2>【就労継続支援B型ココロオドル 業務日誌】</h2>';
+  html += '<p class="daily-date">' + dailyDateLabel(currentDaily) + '</p>';
+
+  html += '<div class="daily-summary">';
+  html += '<p>利用者数合計：<b>' + userCount + '</b> 名</p>';
+  html += '<p>行き送迎合計：<b>' + morningSum + '</b> 名</p>';
+  html += '<p>帰り送迎合計：<b>' + eveningSum + '</b> 名</p>';
+  var absVal = d.absentCount || 0;
+  html += '<p>欠席時対応合計：<b>' + absVal + ' 件</b>　' +
+    '<input id="absentInput" class="daily-count-input" type="number" min="0" value="' + absVal + '" onchange="updateAbsent(this.value)">件</p>';
+  html += '</div>';
+
+  html += '<div class="daily-section"><h3>利用者の出勤状況</h3>';
+  html += '<table class="daily-table"><thead><tr><th>氏名</th><th>出勤</th><th>退勤</th><th>行き送迎</th><th>帰り送迎</th></tr></thead><tbody>';
+  html += userRows || '<tr><td colspan="5">利用者なし</td></tr>';
+  html += '</tbody></table></div>';
+
+  html += '<div class="daily-section"><h3>職員の出勤状況</h3>';
+  html += '<table class="daily-table"><thead><tr><th>氏名</th><th>出勤</th><th>退勤</th></tr></thead><tbody>';
+  html += staffRows || '<tr><td colspan="3">職員なし</td></tr>';
+  html += '</tbody></table></div>';
+
+  html += '<div class="daily-section"><h3>午前の活動内容</h3>';
+  html += '<p class="small-note">テンプレートが自動入力されます。特別なことがあれば編集してください。</p>';
+  html += '<textarea id="morningText" rows="3">' + escapeHtml(morningVal) + '</textarea></div>';
+
+  html += '<div class="daily-section"><h3>午後の活動内容</h3>';
+  html += '<p class="small-note">テンプレートが自動入力されます。特別なことがあれば編集してください。</p>';
+  html += '<textarea id="afternoonText" rows="3">' + escapeHtml(afternoonVal) + '</textarea></div>';
+
+  html += '<div class="daily-section"><h3>特記事項</h3>';
+  html += '<textarea id="specialText" rows="3">' + escapeHtml(d.specialNote) + '</textarea></div>';
+
+  html += '<div class="daily-section"><h3>連絡事項</h3>';
+  html += '<textarea id="contactText" rows="3">' + escapeHtml(d.contactNote) + '</textarea></div>';
+
+  html += '<button class="save-btn daily-action" onclick="saveDailyForm()">業務日誌を保存</button>';
+  html += '<button class="btn-danger" onclick="openIncidentForm()">ヒヤリハット・事故報告</button>';
+  html += '</div>';
+
+  document.getElementById("dailyForm").innerHTML = html;
+}
+
+function updateAbsent(v) {
+  var daily = loadDaily();
+  if (!daily[currentDaily]) daily[currentDaily] = {};
+  daily[currentDaily].absentCount = parseInt(v, 10) || 0;
+  saveDaily(daily);
+}
+
+function saveDailyForm() {
+  var daily = loadDaily();
+  if (!daily[currentDaily]) daily[currentDaily] = {};
+  var d = daily[currentDaily];
+  d.morningNote = document.getElementById("morningText").value;
+  d.afternoonNote = document.getElementById("afternoonText").value;
+  d.specialNote = document.getElementById("specialText").value;
+  d.contactNote = document.getElementById("contactText").value;
+  saveDaily(daily);
+  alert("業務日誌を保存しました");
+}
+
+// 業務日誌フォームに未保存の変更があるか（テキスト・欠席数）
+function dailyFormDirty() {
+  var f = document.getElementById("dailyForm");
+  if (!f || !f.innerHTML) return false;
+  var daily = loadDaily();
+  var d = daily[currentDaily] || {};
+  var tpl = loadTemplate();
+  var texts = [
+    ["morningText", (d.morningNote !== undefined && d.morningNote !== null && d.morningNote !== "") ? d.morningNote : (d.morningNote === "" ? "" : tpl.morning)],
+    ["afternoonText", (d.afternoonNote !== undefined && d.afternoonNote !== null && d.afternoonNote !== "") ? d.afternoonNote : (d.afternoonNote === "" ? "" : tpl.afternoon)],
+    ["specialText", d.specialNote || ""],
+    ["contactText", d.contactNote || ""]
+  ];
+  for (var i = 0; i < texts.length; i++) {
+    var el = document.getElementById(texts[i][0]);
+    if (el && el.value !== texts[i][1]) return true;
+  }
+  var absEl = document.getElementById("absentInput");
+  if (absEl && Number(absEl.value || 0) !== Number(d.absentCount || 0)) return true;
+  return false;
+}
+
+function printDaily() {
+  var daily = loadDaily();
+  if (!daily[currentDaily]) daily[currentDaily] = {};
+  var d = daily[currentDaily];
+  if (document.getElementById("morningText")) {
+    d.morningNote = document.getElementById("morningText").value;
+    d.afternoonNote = document.getElementById("afternoonText").value;
+    d.specialNote = document.getElementById("specialText").value;
+    d.contactNote = document.getElementById("contactText").value;
+    var absEl = document.getElementById("absentInput");
+    if (absEl) d.absentCount = parseInt(absEl.value, 10) || 0;
+    saveDaily(daily);
+  }
+  var html = buildDailySheet(currentDaily);
+  document.getElementById("print-daily-container").innerHTML = html;
+  window.print();
+  document.getElementById("print-daily-container").innerHTML = "";
+}
+
+// ============ ヒヤリハット・事故報告 ============
+var INCIDENT_KEY = "koko_incident";
+function loadIncidents() {
+  try { return JSON.parse(localStorage.getItem(INCIDENT_KEY)) || []; }
+  catch(e) { return []; }
+}
+function saveIncidents(list) { localStorage.setItem(INCIDENT_KEY, JSON.stringify(list)); }
+
+var currentIncidentId = null;
+
+function renderIncidentList() {
+  var list = loadIncidents();
+  var html = "";
+  var sorted = list.slice().sort(function(a, b) {
+    var ka = (a.date || "") + " " + (a.time || "");
+    var kb = (b.date || "") + " " + (b.time || "");
+    return kb.localeCompare(ka);
+  });
+  sorted.forEach(function(r) {
+    var uTxt = (r.users && r.users.length) ? r.users.join("・") : (r.userName || "");
+    html += '<div class="staff-item">' +
+      '<div><div class="name">' + (r.type === "アクシデント" ? '【事故】' : '【ヒヤリハット】') + escapeHtml(r.date || "") + ' ' + escapeHtml(r.time || "") + '</div>' +
+      '<div class="meta">' + escapeHtml(uTxt) + '　' + escapeHtml((r.content || "").slice(0, 30)) + '</div></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+      '<button class="del-btn" style="background:#eef1f5;color:#333" onclick="editIncident(\'' + r.id + '\')">開く</button>' +
+      '<button class="del-btn" onclick="printIncident(\'' + r.id + '\')">印刷</button>' +
+      '<button class="del-btn" onclick="delIncident(\'' + r.id + '\')">削除</button>' +
+      '</div></div>';
+  });
+  document.getElementById("incidentList").innerHTML = html || '<p class="notice">報告書はまだありません</p>';
+}
+
+function openIncidentForm() {
+  currentIncidentId = null;
+  document.getElementById("incidentFormTitle").textContent = "新規報告書";
+  renderIncidentForm();
+  showScreen("screen-incident-form");
+}
+
+function editIncident(id) {
+  currentIncidentId = id;
+  var r = loadIncidents().find(function(x){ return x.id === id; }) || {};
+  document.getElementById("incidentFormTitle").textContent = (r.type === "アクシデント" ? "事故報告書" : "ヒヤリハット報告書");
+  renderIncidentForm();
+  showScreen("screen-incident-form");
+}
+
+function defaultIncident() {
+  return {
+    type: "ヒヤリハット",
+    date: todayStr(),
+    time: "",
+    places: [],
+    cats: [],
+    users: [],
+    staffs: [],
+    content: "",
+    responseSel: [],
+    responseNote: "",
+    cause: "",
+    prevention: "",
+    reporters: [],
+    checker: "",
+    reportDate: todayStr()
+  };
+}
+
+function renderIncidentForm() {
+  var list = loadIncidents();
+  var r = currentIncidentId ? (list.find(function(x){ return x.id === currentIncidentId; }) || defaultIncident()) : defaultIncident();
+
+  // 旧データとの互換
+  var users = (r.users && r.users.length) ? r.users : (r.userName ? [r.userName] : []);
+  var staffs = (r.staffs && r.staffs.length) ? r.staffs : (r.staffName ? [r.staffName] : []);
+  var places = r.places || [];
+  var cats = r.cats || [];
+  var responseSel = r.responseSel || [];
+  var responseNote = (r.responseNote !== undefined) ? r.responseNote : (r.response || "");
+  var reporters = (r.reporters && r.reporters.length) ? r.reporters : (r.reporter ? [r.reporter] : []);
+
+  var all = loadStaff();
+  var userBtns = "";
+  all.filter(function(p){ return p.role === "利用者"; }).forEach(function(u){
+    userBtns += '<div class="opt-btn' + (users.indexOf(u.name) >= 0 ? ' selected' : '') + '" data-g="user" data-name="' + escapeHtml(u.name) + '" onclick="toggleIncidentOpt(this)">' + escapeHtml(u.name) + '</div>';
+  });
+  var staffBtns = "";
+  all.filter(function(p){ return p.role === "職員"; }).forEach(function(p){
+    staffBtns += '<div class="opt-btn' + (staffs.indexOf(p.name) >= 0 ? ' selected' : '') + '" data-g="staff" data-name="' + escapeHtml(p.name) + '" onclick="toggleIncidentOpt(this)">' + escapeHtml(p.name) + '</div>';
+  });
+  var reporterBtns = "";
+  all.filter(function(p){ return p.role === "職員"; }).forEach(function(p){
+    reporterBtns += '<div class="opt-btn' + (reporters.indexOf(p.name) >= 0 ? ' selected' : '') + '" data-g="reporter" data-name="' + escapeHtml(p.name) + '" onclick="toggleIncidentOpt(this)">' + escapeHtml(p.name) + '</div>';
+  });
+
+  var html = '<div class="daily-sheet">';
+  html += '<p class="notice" style="font-size:15px;line-height:1.8">うめるのは「<b>どんなことがおきたか</b>」だけでOK。あとは<b>できるところだけ</b>うめてください。</p>';
+
+  // 種別
+  html += '<div class="inc-sec"><p class="inc-label">1. きっかけは？</p><div class="opt-row inc-row">';
+  html += '<div class="opt-btn' + (r.type === "ヒヤリハット" ? ' selected' : '') + '" data-it="type" data-iv="ヒヤリハット" onclick="selectIncidentOpt(this)">ヒヤリハット<br><small style="font-weight:400;font-size:12px">（けがはなかった）</small></div>';
+  html += '<div class="opt-btn' + (r.type === "アクシデント" ? ' selected' : '') + '" data-it="type" data-iv="アクシデント" onclick="selectIncidentOpt(this)">アクシデント<br><small style="font-weight:400;font-size:12px">（事故・けがをした）</small></div>';
+  html += '</div></div>';
+
+  // 報告者
+  html += '<div class="inc-sec"><p class="inc-label">2. 発見者は？（何人でも選んでOK）</p>';
+  html += '<div class="opt-row inc-row">' + (reporterBtns || '<p class="inc-note">職員が登録されていません</p>') + '</div>';
+  html += '</div>';
+
+  // 発生日時
+  html += '<div class="inc-sec"><p class="inc-label">3. いつ？</p>';
+  html += '<div class="opt-row" style="flex-wrap:wrap;gap:10px">';
+  html += '<div class="field inc-field" style="flex:1;min-width:180px"><label>日にち</label><input type="date" id="incDate" class="daily-count-input" style="width:100%;height:52px;font-size:17px" value="' + r.date + '"></div>';
+  html += '<div class="field inc-field" style="flex:1;min-width:140px"><label>時間</label><input type="time" id="incTime" class="daily-count-input" style="width:100%;height:52px;font-size:17px" value="' + escapeHtml(r.time || "") + '"></div>';
+  html += '<button class="big-btn btn-in" style="flex:0 0 auto;align-self:flex-end;padding:14px 20px;font-size:16px" onclick="setIncidentNow()">いま</button>';
+  html += '</div></div>';
+
+  // 場所
+  html += '<div class="inc-sec"><p class="inc-label">4. どこで？（うめられるだけ）</p><div class="opt-row inc-row">';
+  ["作業室","トイレ","廊下","食堂・休憩スペース","玄関・屋外","送迎車内","その他"].forEach(function(p){
+    html += '<div class="opt-btn' + (places.indexOf(p) >= 0 ? ' selected' : '') + '" data-g="place" data-name="' + p + '" onclick="toggleIncidentOpt(this)">' + p + '</div>';
+  });
+  html += '</div></div>';
+
+  // 何がおきたか
+  html += '<div class="inc-sec"><p class="inc-label">5. 何がおきた？（うめられるだけ）</p><div class="opt-row inc-row">';
+  ["転倒・つまずき","転落","誤嚥・むせ","誤薬","やけど","切り傷・擦り傷","体調変化","暴力・暴言","その他"].forEach(function(c){
+    html += '<div class="opt-btn' + (cats.indexOf(c) >= 0 ? ' selected' : '') + '" data-g="cat" data-name="' + c + '" onclick="toggleIncidentOpt(this)">' + c + '</div>';
+  });
+  html += '</div></div>';
+
+  // 当事者
+  html += '<div class="inc-sec"><p class="inc-label">6. 当事者は？（何人でも選んでOK）</p>';
+  html += '<p class="inc-note" style="margin-bottom:8px">利用者さん</p>';
+  html += '<div class="opt-row inc-row">' + (userBtns || '<p class="inc-note">利用者が登録されていません</p>') + '</div>';
+  html += '<p class="inc-note" style="margin:10px 0 8px">職員（自分）</p>';
+  html += '<div class="opt-row inc-row">' + (staffBtns || '<p class="inc-note">職員が登録されていません</p>') + '</div>';
+  html += '</div>';
+
+  // 発生内容
+  html += '<div class="inc-sec"><p class="inc-label">7. どんなことがおきた？<span style="color:#888">（うめられるだけ）</span></p>';
+  html += '<div class="field inc-field"><textarea id="incContent" rows="4" style="width:100%;padding:14px;border:1px solid #d9e0e8;border-radius:8px;box-sizing:border-box;font-family:inherit" placeholder="例：歩いていて、つまずいて床に手をついた。痛みはないと言われた。">' + escapeHtml(r.content) + '</textarea></div></div>';
+
+  // 対応
+  html += '<div class="inc-sec"><p class="inc-label">8. とった対応は？（うめられるだけ）</p><div class="opt-row inc-row">';
+  ["様子を見た","消毒・手当て","氷で冷やした","医療機関に連絡","救急車を呼んだ","管理者へ報告","その他"].forEach(function(p){
+    html += '<div class="opt-btn' + (responseSel.indexOf(p) >= 0 ? ' selected' : '') + '" data-g="resp" data-name="' + p + '" onclick="toggleIncidentOpt(this)">' + p + '</div>';
+  });
+  html += '</div>';
+  html += '<div class="field inc-field" style="margin-top:10px"><textarea id="incResponseNote" rows="2" style="width:100%;padding:14px;border:1px solid #d9e0e8;border-radius:8px;box-sizing:border-box;font-family:inherit" placeholder="対応のくわしいこと（うめられるなら）">' + escapeHtml(responseNote) + '</textarea></div>';
+  html += '</div>';
+
+  // 原因・再発防止
+  html += '<div class="inc-sec"><p class="inc-label">9. どうして？ これからどうする？<br><small style="font-weight:400;font-size:13px;color:#888">（うめられるだけ。あとから管理者がうめることもできます）</small></p>';
+  html += '<div class="field inc-field"><textarea id="incCause" rows="3" style="width:100%;padding:14px;border:1px solid #d9e0e8;border-radius:8px;box-sizing:border-box;font-family:inherit" placeholder="例：廊下に物が置いてあったから">' + escapeHtml(r.cause) + '</textarea></div>';
+  html += '<div class="field inc-field"><textarea id="incPrevention" rows="3" style="width:100%;padding:14px;border:1px solid #d9e0e8;border-radius:8px;box-sizing:border-box;font-family:inherit" placeholder="例：廊下に物を置かない">' + escapeHtml(r.prevention) + '</textarea></div></div>';
+
+  // 報告日・確認者（管理者用）
+  html += '<div class="inc-sec"><p class="inc-label">10. 報告日・確認者<span style="color:#888;font-weight:400;font-size:13px">（管理者が後からうめる）</span></p>';
+  html += '<div class="opt-row" style="flex-wrap:wrap;gap:10px">';
+  html += '<div class="field inc-field" style="flex:1;min-width:180px"><label>報告日</label><input type="date" id="incReportDate" class="daily-count-input" style="width:100%;height:52px;font-size:17px" value="' + escapeHtml(r.reportDate || "") + '"></div>';
+  html += '<div class="field inc-field" style="flex:1;min-width:180px"><label>確認者</label><input type="text" id="incChecker" class="daily-count-input" style="width:100%;height:52px;font-size:17px" value="' + escapeHtml(r.checker || "") + '" placeholder="確認した管理者の名前"></div>';
+  html += '</div></div>';
+
+  html += '<button class="save-btn" onclick="saveIncident()" style="font-size:18px;padding:18px 0">保存</button>';
+  html += '<button class="btn-danger" onclick="saveIncident(true)" style="font-size:18px;padding:18px 0">保存してPDF出力・印刷</button>';
+  html += '</div>';
+
+  document.getElementById("incidentForm").innerHTML = html;
+  incidentBaseline = collectIncident();
+}
+
+function selectIncidentOpt(el) {
+  document.querySelectorAll('#incidentForm .opt-btn[data-it="' + el.dataset.it + '"]').forEach(function(b){ b.classList.remove("selected"); });
+  el.classList.add("selected");
+}
+
+// 事故報告フォームに未保存の変更があるか（フォーム描画時の状態と比較）
+var incidentBaseline = null;
+function incidentFormDirty() {
+  var f = document.getElementById("incidentForm");
+  if (!f || !f.innerHTML) return false;
+  if (!incidentBaseline) return false;
+  var cur = collectIncident();
+  var keys = ["type","date","time","places","cats","users","staffs","content","responseSel","responseNote","cause","prevention","reporters","reportDate","checker"];
+  for (var i = 0; i < keys.length; i++) {
+    if (JSON.stringify(cur[keys[i]]) !== JSON.stringify(incidentBaseline[keys[i]])) return true;
+  }
+  return false;
+}
+
+// 複数選択（タップでオン・オフ）
+function toggleIncidentOpt(el) {
+  el.classList.toggle("selected");
+}
+
+// 現在時刻をセット
+function setIncidentNow() {
+  var d = new Date();
+  document.getElementById("incTime").value = pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+function collectIncident() {
+  function picks(g) {
+    var arr = [];
+    document.querySelectorAll('#incidentForm .opt-btn[data-g="' + g + '"].selected').forEach(function(el){ arr.push(el.dataset.name); });
+    return arr;
+  }
+  var typeEl = document.querySelector('#incidentForm .opt-btn[data-it="type"].selected');
+  return {
+    type: typeEl ? typeEl.dataset.iv : "ヒヤリハット",
+    date: document.getElementById("incDate").value,
+    time: document.getElementById("incTime").value,
+    places: picks("place"),
+    cats: picks("cat"),
+    users: picks("user"),
+    staffs: picks("staff"),
+    content: document.getElementById("incContent").value,
+    responseSel: picks("resp"),
+    responseNote: document.getElementById("incResponseNote").value,
+    cause: document.getElementById("incCause").value,
+    prevention: document.getElementById("incPrevention").value,
+    reporters: picks("reporter"),
+    reportDate: document.getElementById("incReportDate").value,
+    checker: document.getElementById("incChecker").value.trim()
+  };
+}
+
+function saveIncident(andPrint) {
+  var data = collectIncident();
+  if (data.date > todayStr()) { alert("発生日が未来の日付になっています。日付を確認してください。"); return; }
+  var list = loadIncidents();
+  if (currentIncidentId) {
+    var rec = list.find(function(x){ return x.id === currentIncidentId; });
+    if (rec) for (var k in data) rec[k] = data[k];
+  } else {
+    data.id = Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
+    list.push(data);
+  }
+  saveIncidents(list);
+  currentIncidentId = currentIncidentId || data.id;
+  incidentBaseline = collectIncident();
+  if (andPrint) {
+    var r = list.find(function(x){ return x.id === currentIncidentId; });
+    printIncident(r.id);
+  } else {
+    alert("報告書を保存しました");
+  }
+}
+
+function delIncident(id) {
+  if (!confirm("この報告書を削除しますか？")) return;
+  saveIncidents(loadIncidents().filter(function(x){ return x.id !== id; }));
+  renderIncidentList();
+}
+
+function printIncident(id) {
+  var r = loadIncidents().find(function(x){ return x.id === id; });
+  if (!r) return;
+  var typeLabel = r.type === "アクシデント" ? "事故報告書" : "ヒヤリハット報告書";
+  var users = (r.users && r.users.length) ? r.users.join("・") : (r.userName || "");
+  var staffs = (r.staffs && r.staffs.length) ? r.staffs.join("・") : (r.staffName || "");
+  var places = (r.places && r.places.length) ? r.places.join("・") : (r.place || "");
+  var cats = (r.cats && r.cats.length) ? r.cats.join("・") : (r.category || "");
+  var respTxt = (r.responseSel && r.responseSel.length ? r.responseSel.join("・") : "");
+  if (r.responseNote) respTxt = respTxt + "\n" + r.responseNote;
+  var reporters = (r.reporters && r.reporters.length) ? r.reporters.join("・") : (r.reporter || "");
+  var html = '<div class="sheet incident-print">';
+  html += '<h2>【就労継続支援B型ココロオドル　' + typeLabel + '】</h2>';
+
+  function row(label, value, h) {
+    return '<tr><th>' + label + '</th><td' + (h ? ' style="min-height:' + h + '"' : '') + '>' + (value ? escapeHtml(value).replace(/\n/g, "<br>") : "&nbsp;") + '</td></tr>';
+  }
+
+  html += '<table class="print-table"><tbody>';
+  html += row("種別", r.type === "アクシデント" ? "アクシデント（事故）" : "ヒヤリハット");
+  html += row("発生日時", (r.date || "") + (r.time ? "　" + r.time : ""));
+  html += row("場所", places);
+  html += row("何がおきたか", cats);
+  html += row("当事者（利用者）", users);
+  html += row("当事者（職員）", staffs);
+  html += row("発生内容", r.content, "60px");
+  html += row("対応・処置", respTxt, "45px");
+  html += row("原因・背景", r.cause, "45px");
+  html += row("再発防止策", r.prevention, "45px");
+  html += row("報告者", reporters);
+  html += row("報告日", r.reportDate || "");
+  html += row("確認者", r.checker || "");
+  html += '</tbody></table>';
+  html += '</div>';
+
+  document.getElementById("print-daily-container").innerHTML = html;
+  window.print();
+  document.getElementById("print-daily-container").innerHTML = "";
+}
+
+// ============ 活動テンプレート ============
+function renderTemplateForm() {
+  var t = loadTemplate();
+  document.getElementById("tmplMorning").value = t.morning;
+  document.getElementById("tmplAfternoon").value = t.afternoon;
+}
+function saveTemplate() {
+  saveTemplateData({
+    morning: document.getElementById("tmplMorning").value,
+    afternoon: document.getElementById("tmplAfternoon").value
+  });
+  alert("テンプレートを保存しました");
+}
+
+// ============ データバックアップ ============
+var BACKUP_KEYS = [STAFF_KEY, RECORDS_KEY, DAILY_KEY, TEMPLATE_KEY, INCIDENT_KEY];
+var BACKUP_MAGIC = "koko-odoroku-backup";
+
+function exportBackup() {
+  var data = { app: BACKUP_MAGIC, exported: new Date().toISOString() };
+  BACKUP_KEYS.forEach(function(k) {
+    var v = localStorage.getItem(k);
+    if (v !== null) data[k] = v;
+  });
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "koko-backup-" + todayStr() + ".json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  alert("バックアップファイルを書き出しました。大切に保管してください。");
+}
+
+function importBackup() {
+  var fileEl = document.getElementById("backupFile");
+  if (!fileEl.files || !fileEl.files[0]) { alert("バックアップファイルを選択してください"); return; }
+  if (!confirm("取り込むと、この端末の現在のデータはすべて上書きされます。よろしいですか？")) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var data = JSON.parse(reader.result);
+      if (data.app !== BACKUP_MAGIC) { alert("このアプリのバックアップファイルではありません"); return; }
+      BACKUP_KEYS.forEach(function(k) {
+        if (typeof data[k] === "string") localStorage.setItem(k, data[k]);
+      });
+      alert("バックアップを取り込みました");
+      showScreen("screen-main");
+    } catch(e) {
+      alert("ファイルを読み込めませんでした（形式が正しくありません）");
+    }
+  };
+  reader.readAsText(fileEl.files[0]);
+}
+
+// ============ 初期化 ============
+renderNameList();
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(function(){});
+}
+</script>
+</body>
+</html>
