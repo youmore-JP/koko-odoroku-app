@@ -400,7 +400,7 @@ table.daily-table th { background: #eef1f5; }
     <button class="back-btn" onclick="showScreen('screen-daily')">← 業務日誌へ</button>
     <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
     <h2>ヒヤリハット・事故報告書</h2>
-    <button class="save-btn" style="margin-bottom:14px;" onclick="openIncidentForm()">新規報告書を作成</button>
+    <button class="save-btn" style="margin-bottom:14px;" onclick="openIncidentForm('list')">新規報告書を作成</button>
     <div id="incidentList" class="staff-list"></div>
   </div>
 </div>
@@ -408,7 +408,7 @@ table.daily-table th { background: #eef1f5; }
 <!-- ===== ヒヤリハット・事故報告 フォーム ===== -->
 <div id="screen-incident-form" class="screen">
   <div class="container">
-    <button class="back-btn" onclick="showScreen('screen-incident')">← 報告書一覧へ</button>
+    <button class="back-btn" id="incidentFormBack" onclick="goIncidentFormBack()">← 打刻画面へ</button>
     <h2 id="incidentFormTitle">ヒヤリハット・事故報告書</h2>
     <div id="incidentForm"></div>
   </div>
@@ -1216,6 +1216,7 @@ function loadIncidents() {
 function saveIncidents(list) { localStorage.setItem(INCIDENT_KEY, JSON.stringify(list)); }
 
 var currentIncidentId = null;
+var incidentFormFrom = "main";
 
 function renderIncidentList() {
   var list = loadIncidents();
@@ -1239,8 +1240,15 @@ function renderIncidentList() {
   document.getElementById("incidentList").innerHTML = html || '<p class="notice">報告書はまだありません</p>';
 }
 
-function openIncidentForm() {
+function setIncidentFormFrom(from) {
+  incidentFormFrom = from === "list" ? "list" : "main";
+  document.getElementById("incidentFormBack").textContent =
+    incidentFormFrom === "list" ? "← 報告書一覧へ" : "← 打刻画面へ";
+}
+
+function openIncidentForm(from) {
   currentIncidentId = null;
+  setIncidentFormFrom(from);
   document.getElementById("incidentFormTitle").textContent = "新規報告書";
   renderIncidentForm();
   showScreen("screen-incident-form");
@@ -1248,10 +1256,15 @@ function openIncidentForm() {
 
 function editIncident(id) {
   currentIncidentId = id;
+  setIncidentFormFrom("list");
   var r = loadIncidents().find(function(x){ return x.id === id; }) || {};
   document.getElementById("incidentFormTitle").textContent = (r.type === "アクシデント" ? "事故報告書" : "ヒヤリハット報告書");
   renderIncidentForm();
   showScreen("screen-incident-form");
+}
+
+function goIncidentFormBack() {
+  showScreen(incidentFormFrom === "list" ? "screen-incident" : "screen-main");
 }
 
 function defaultIncident() {
