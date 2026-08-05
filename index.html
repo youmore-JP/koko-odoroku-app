@@ -1036,7 +1036,12 @@ function buildDailySheet(ymd) {
   html += '</tbody></table></div>';
   html += '<div class="daily-section"><h3>午前の活動内容</h3><p>' + escapeHtml(morningVal).replace(/\n/g,"<br>") + '</p></div>';
   html += '<div class="daily-section"><h3>午後の活動内容</h3><p>' + escapeHtml(afternoonVal).replace(/\n/g,"<br>") + '</p></div>';
-  html += '<div class="daily-section"><h3>特記事項</h3><p>' + (d.specialNote ? escapeHtml(d.specialNote).replace(/\n/g,"<br>") : "&nbsp;") + '</p></div>';
+  html += '<div class="daily-section"><h3>特記事項</h3>';
+  var incSum = incidentSummaryFor(ymd);
+  var specialHtml = incSum ? escapeHtml(incSum) : "";
+  if (incSum && d.specialNote) specialHtml += "<br>";
+  if (d.specialNote) specialHtml += escapeHtml(d.specialNote).replace(/\n/g,"<br>");
+  html += '<p>' + (specialHtml || "&nbsp;") + '</p></div>';
   html += '<div class="daily-section"><h3>連絡事項</h3><p>' + (d.contactNote ? escapeHtml(d.contactNote).replace(/\n/g,"<br>") : "&nbsp;") + '</p></div>';
   html += '</div>';
   return html;
@@ -1135,6 +1140,8 @@ function renderDaily() {
   html += '<textarea id="afternoonText" rows="3">' + escapeHtml(afternoonVal) + '</textarea></div>';
 
   html += '<div class="daily-section"><h3>特記事項</h3>';
+  var incSum = incidentSummaryFor(currentDaily);
+  if (incSum) html += '<p class="inc-note" style="margin-bottom:6px;">' + escapeHtml(incSum) + '</p>';
   html += '<textarea id="specialText" rows="3">' + escapeHtml(d.specialNote) + '</textarea></div>';
 
   html += '<div class="daily-section"><h3>連絡事項</h3>';
@@ -1217,6 +1224,16 @@ function saveIncidents(list) { localStorage.setItem(INCIDENT_KEY, JSON.stringify
 
 var currentIncidentId = null;
 var incidentFormFrom = "main";
+
+function incidentSummaryFor(ymd) {
+  try {
+    return loadIncidents().filter(function(x){ return x.date === ymd; }).map(function(x) {
+      var label = x.type === "アクシデント" ? "事故あり" : "ヒヤリハットあり";
+      var reporters = (x.reporters && x.reporters.length) ? x.reporters.join("・") : (x.reporter || "");
+      return label + (reporters ? "（報告者" + reporters + "）" : "");
+    }).join("、");
+  } catch (e) { return ""; }
+}
 
 function renderIncidentList() {
   var list = loadIncidents();
