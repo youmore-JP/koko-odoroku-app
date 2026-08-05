@@ -1229,8 +1229,12 @@ function incidentSummaryFor(ymd) {
   try {
     return loadIncidents().filter(function(x){ return x.date === ymd; }).map(function(x) {
       var label = x.type === "アクシデント" ? "事故あり" : "ヒヤリハットあり";
-      var reporters = (x.reporters && x.reporters.length) ? x.reporters.join("・") : (x.reporter || "");
-      return label + (reporters ? "（報告者" + reporters + "）" : "");
+      var involved = [];
+      if (x.users && x.users.length) involved = involved.concat(x.users);
+      if (x.staffs && x.staffs.length) involved = involved.concat(x.staffs);
+      if (!involved.length && x.userName) involved.push(x.userName);
+      if (!involved.length && x.staffName) involved.push(x.staffName);
+      return label + (involved.length ? "（当事者" + involved.join("・") + "）" : "");
     }).join("、");
   } catch (e) { return ""; }
 }
