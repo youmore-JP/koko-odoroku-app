@@ -247,6 +247,32 @@ table.daily-table th { background: #eef1f5; }
 
 .back-btn { display: inline-block; margin: 10px 0; padding: 8px 16px; background: #eef1f5; border-radius: 8px; font-size: 13px; cursor: pointer; }
 
+/* まとめて入力 */
+.bulk-wrap { margin: 2px 0 14px; }
+.bulk-toggle { width: 100%; padding: 14px 0; font-size: 15px; font-weight: 700; background: #e8f0fe; color: #1a73e8; border: 2px solid #1a73e8; border-radius: 10px; cursor: pointer; }
+.bulk-panel { display: none; background: #fff; border: 1px solid #d9e0e8; border-radius: 10px; padding: 16px; margin-top: 10px; }
+.bulk-panel.open { display: block; }
+.bulk-note { background: #e8f0fe; border: 1px solid #bcd3f7; border-radius: 8px; padding: 10px; font-size: 12px; color: #174ea6; line-height: 1.7; margin-bottom: 14px; }
+.bulk-time-row { display: flex; gap: 10px; }
+.bulk-time-row .field { flex: 1; }
+.bulk-time-row input { width: 100%; padding: 12px; border: 1px solid #d9e0e8; border-radius: 8px; font-size: 15px; }
+.bulk-day-actions { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.bday-btn { background: #f8fafc; border: 1px solid #d9e0e8; border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+.bulk-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.bulk-day { width: 50px; padding: 7px 0 5px; border-radius: 8px; text-align: center; font-size: 14px; border: 1px solid #d9e0e8; background: #fff; cursor: pointer; }
+.bulk-day .dow { display: block; font-size: 10px; color: #9aa4b0; margin-top: 2px; }
+.bulk-day.weekend { background: #f7f7f7; color: #9aa4b0; }
+.bulk-day.on { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+.bulk-day.on .dow { color: #c8dcf9; }
+.bulk-day.weekend.on { background: #9aa4b0; border-color: #9aa4b0; }
+.bulk-persons { display: flex; flex-wrap: wrap; gap: 8px; }
+.bulk-person { display: flex; align-items: center; gap: 6px; border: 1px solid #d9e0e8; border-radius: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; background: #fff; }
+.bulk-person .ck { width: 18px; height: 18px; border: 2px solid #d9e0e8; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; background: #fff; flex: 0 0 auto; }
+.bulk-person.on { background: #e8f0fe; border-color: #1a73e8; }
+.bulk-person.on .ck { background: #1a73e8; border-color: #1a73e8; }
+.bulk-person .rk { color: #888; font-size: 11px; }
+.bulk-preview { background: #fff8e6; border: 1px solid #f0e0b0; border-radius: 8px; padding: 12px; font-size: 13px; color: #7a6300; line-height: 1.8; margin: 12px 0; }
+
 @media print {
   @page { size: A4; margin: 10mm; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -441,6 +467,65 @@ table.daily-table th { background: #eef1f5; }
       <button onclick="changeMonth(-1)">◀ 前月</button>
       <span class="ym" id="recordYM"></span>
       <button onclick="changeMonth(1)">次月 ▶</button>
+    </div>
+    <div class="bulk-wrap no-print">
+      <button class="bulk-toggle" onclick="toggleBulkPanel()">▼ まとめて入力</button>
+      <div id="bulkPanel" class="bulk-panel">
+        <p class="bulk-note">表示中の月（<span id="bulkYM"></span>）の打刻をまとめて入力します。システム導入前の期間を埋める用途です。既存の打刻を変更したくない日があるときは「既存スキップ」に切り替えてください。</p>
+        <div class="field">
+          <label>テンプレート（タップで時間欄に反映。その後も自由に編集できます）</label>
+          <div class="opt-row">
+            <div class="opt-btn" onclick="bulkTpl('10:00','15:00')">10:00〜15:00</div>
+            <div class="opt-btn" onclick="bulkTpl('10:00','13:30')">10:00〜13:30</div>
+          </div>
+        </div>
+        <div class="bulk-time-row">
+          <div class="field"><label>出勤</label><input id="bulkIn" type="time" value="10:00"></div>
+          <div class="field"><label>退勤</label><input id="bulkOut" type="time" value="15:00"></div>
+        </div>
+        <div class="bulk-time-row">
+          <div class="field"><label>利用者の休憩（分）</label><input id="bulkBreakU" type="number" min="0" step="5" value="60"></div>
+          <div class="field"><label>職員の休憩（分）</label><input id="bulkBreakS" type="number" min="0" step="5" value="0"></div>
+        </div>
+        <div class="field">
+          <label>送迎（利用者に付けます。職員には記録しません）</label>
+          <div class="opt-row">
+            <div class="opt-btn selected" data-bf="morning" data-v="1" onclick="selectBulkOpt(this)">行き あり</div>
+            <div class="opt-btn" data-bf="morning" data-v="0" onclick="selectBulkOpt(this)">行き なし</div>
+          </div>
+          <div class="opt-row" style="margin-top:8px">
+            <div class="opt-btn selected" data-bf="evening" data-v="1" onclick="selectBulkOpt(this)">帰り あり</div>
+            <div class="opt-btn" data-bf="evening" data-v="0" onclick="selectBulkOpt(this)">帰り なし</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>対象日（土日はグレー表示。タップで追加・解除できます）</label>
+          <div class="bulk-day-actions">
+            <button class="bday-btn" onclick="bulkDaysSel('weekday')">平日のみ</button>
+            <button class="bday-btn" onclick="bulkDaysSel('all')">全日</button>
+            <button class="bday-btn" onclick="bulkDaysSel('clear')">すべて解除</button>
+          </div>
+          <div id="bulkDays" class="bulk-days"></div>
+        </div>
+        <div class="field">
+          <label>対象者（退職者・退所者は自動で除かれます。タップで個別に除外できます）</label>
+          <div class="bulk-day-actions">
+            <button class="bday-btn" onclick="bulkPersonsAll(true)">全員選択</button>
+            <button class="bday-btn" onclick="bulkPersonsAll(false)">すべて解除</button>
+          </div>
+          <div id="bulkPersons" class="bulk-persons"></div>
+        </div>
+        <div class="field">
+          <label>既存データの扱い（基本は「上書き」のまま。本データがある月は「既存スキップ」に）</label>
+          <div class="opt-row">
+            <div class="opt-btn selected" data-b="mode" data-v="over" onclick="selectBulkMode(this)">上書き</div>
+            <div class="opt-btn" data-b="mode" data-v="skip" onclick="selectBulkMode(this)">既存スキップ</div>
+          </div>
+        </div>
+        <div id="bulkPreview" class="bulk-preview"></div>
+        <button class="save-btn" onclick="applyBulk()">この内容でまとめて入力</button>
+        <button class="close-btn" onclick="closeBulkPanel()">パネルを閉じる</button>
+      </div>
     </div>
     <div id="recordList"></div>
   </div>
@@ -782,6 +867,7 @@ function changeMonth(delta) {
   if (m < 1) { m = 12; y--; }
   if (m > 12) { m = 1; y++; }
   currentYM = y + "-" + pad(m);
+  if (bulkOpen) bulkInitDays();
   renderRecords();
 }
 function changeMonthExport(delta) {
@@ -936,6 +1022,209 @@ function renderRecords() {
   var html = "";
   list.forEach(function(p) { html += buildSheet(p, currentYM); });
   document.getElementById("recordList").innerHTML = html || "<p>名簿が空です</p>";
+}
+
+// ============ まとめて入力 ============
+var bulkOpen = false;
+var bulkState = { days: {}, persons: {} };
+var bulkMode = "over";
+
+function toggleBulkPanel() {
+  bulkOpen = !bulkOpen;
+  document.getElementById("bulkPanel").classList.toggle("open", bulkOpen);
+  document.querySelector(".bulk-toggle").textContent = bulkOpen ? "▲ まとめて入力（編集中）" : "▼ まとめて入力";
+  if (bulkOpen) { bulkInitDays(); renderBulkPersons(); }
+}
+function closeBulkPanel() {
+  bulkOpen = false;
+  document.getElementById("bulkPanel").classList.remove("open");
+  document.querySelector(".bulk-toggle").textContent = "▼ まとめて入力";
+}
+
+function bulkTpl(inT, outT) {
+  document.getElementById("bulkIn").value = inT;
+  document.getElementById("bulkOut").value = outT;
+}
+
+function bulkSelectedDays() {
+  return Object.keys(bulkState.days).filter(function(k){ return bulkState.days[k]; }).map(Number).sort(function(a,b){ return a-b; });
+}
+
+function bulkInitDays() {
+  var y = Number(currentYM.split("-")[0]), m = Number(currentYM.split("-")[1]);
+  var days = monthDays(currentYM);
+  var today = new Date();
+  var todayY = today.getFullYear(), todayM = today.getMonth() + 1, todayD = today.getDate();
+  bulkState.days = {};
+  for (var d = 1; d <= days; d++) {
+    var dow = new Date(y, m - 1, d).getDay();
+    if (dow === 0 || dow === 6) continue;
+    if (y > todayY || (y === todayY && m > todayM)) continue;
+    if (y === todayY && m === todayM && d > todayD) continue;
+    bulkState.days[d] = true;
+  }
+  renderBulkDays();
+  renderBulkPreview();
+}
+
+function bulkDaysSel(kind) {
+  var y = Number(currentYM.split("-")[0]), m = Number(currentYM.split("-")[1]);
+  var days = monthDays(currentYM);
+  var today = new Date();
+  var todayY = today.getFullYear(), todayM = today.getMonth() + 1, todayD = today.getDate();
+  for (var d = 1; d <= days; d++) {
+    if (kind === "clear") { bulkState.days[d] = false; continue; }
+    if (kind === "all") { bulkState.days[d] = true; continue; }
+    var dow = new Date(y, m - 1, d).getDay();
+    var ok = dow !== 0 && dow !== 6;
+    if (y > todayY || (y === todayY && m > todayM)) ok = false;
+    if (y === todayY && m === todayM && d > todayD) ok = false;
+    bulkState.days[d] = ok;
+  }
+  renderBulkDays();
+  renderBulkPreview();
+}
+
+function renderBulkDays() {
+  var y = Number(currentYM.split("-")[0]), m = Number(currentYM.split("-")[1]);
+  var days = monthDays(currentYM);
+  var html = "";
+  for (var d = 1; d <= days; d++) {
+    var dow = new Date(y, m - 1, d).getDay();
+    var weekend = dow === 0 || dow === 6;
+    var on = !!bulkState.days[d];
+    html += '<div class="bulk-day' + (weekend ? " weekend" : "") + (on ? " on" : "") + '" onclick="toggleBulkDay(' + d + ')">' + d + '<span class="dow">' + WEEK[dow] + '</span></div>';
+  }
+  document.getElementById("bulkDays").innerHTML = html;
+  document.getElementById("bulkYM").textContent = currentYM.split("-")[0] + "年" + Number(currentYM.split("-")[1]) + "月";
+}
+
+function toggleBulkDay(d) {
+  bulkState.days[d] = !bulkState.days[d];
+  renderBulkDays();
+  renderBulkPreview();
+}
+
+function renderBulkPersons() {
+  var list = loadStaff().filter(function(p){ return !p.retired; });
+  var html = "";
+  list.forEach(function(p) {
+    if (typeof bulkState.persons[p.id] === "undefined") bulkState.persons[p.id] = true;
+    var on = !!bulkState.persons[p.id];
+    html += '<div class="bulk-person' + (on ? " on" : "") + '" onclick="toggleBulkPerson(\'' + p.id + '\')"><span class="ck">' + (on ? "✓" : "") + '</span>' + escapeHtml(p.name) + '<span class="rk">' + p.role + '</span></div>';
+  });
+  document.getElementById("bulkPersons").innerHTML = html || "<p style='font-size:13px;color:#888'>対象者がいません</p>";
+  renderBulkPreview();
+}
+
+function toggleBulkPerson(id) {
+  bulkState.persons[id] = !bulkState.persons[id];
+  renderBulkPersons();
+}
+function bulkPersonsAll(on) {
+  loadStaff().filter(function(p){ return !p.retired; }).forEach(function(p){ bulkState.persons[p.id] = on; });
+  renderBulkPersons();
+}
+
+function selectBulkOpt(el) {
+  var field = el.dataset.bf;
+  document.querySelectorAll('#bulkPanel .opt-btn[data-bf="' + field + '"]').forEach(function(b){ b.classList.remove("selected"); });
+  el.classList.add("selected");
+  renderBulkPreview();
+}
+function selectBulkMode(el) {
+  bulkMode = el.dataset.v;
+  document.querySelectorAll('#bulkPanel .opt-btn[data-b="mode"]').forEach(function(b){ b.classList.remove("selected"); });
+  el.classList.add("selected");
+  renderBulkPreview();
+}
+function getBulkOpt(field) {
+  var el = document.querySelector('#bulkPanel .opt-btn[data-bf="' + field + '"].selected');
+  return el ? Number(el.dataset.v) : 0;
+}
+
+function renderBulkPreview() {
+  if (!bulkOpen) return;
+  var days = bulkSelectedDays();
+  var list = loadStaff().filter(function(p){ return !p.retired && bulkState.persons[p.id]; });
+  var recs = loadRecords();
+  var total = 0, overwrite = 0, existing = 0;
+  list.forEach(function(p) {
+    days.forEach(function(d) {
+      var key = currentYM + "-" + pad(d) + "|" + p.id;
+      total++;
+      var r = recs[key];
+      if (r && (r.in || r.out)) {
+        existing++;
+        if (bulkMode === "over") overwrite++;
+      }
+    });
+  });
+  var ym = currentYM.split("-")[0] + "年" + Number(currentYM.split("-")[1]) + "月";
+  var html = "入力対象：<b>" + ym + "</b> の " + days.length + "日 × " + list.length + "人 = <b>" + total + "件</b>";
+  if (bulkMode === "over") html += "（<b>既存上書き " + overwrite + "件</b>）";
+  else html += "（既存スキップ " + existing + "件）";
+  document.getElementById("bulkPreview").innerHTML = html;
+}
+
+function applyBulk() {
+  var days = bulkSelectedDays();
+  var persons = loadStaff().filter(function(p){ return !p.retired && bulkState.persons[p.id]; });
+  if (!days.length) { alert("対象日が選ばれていません。日付チップを選んでください"); return; }
+  if (!persons.length) { alert("対象者が選ばれていません。対象者のチップを選んでください"); return; }
+  var inV = document.getElementById("bulkIn").value;
+  var outV = document.getElementById("bulkOut").value;
+  if (inV && !/^\d{1,2}:\d{2}$/.test(inV)) { alert("出勤時刻の形式が正しくありません"); return; }
+  if (outV && !/^\d{1,2}:\d{2}$/.test(outV)) { alert("退勤時刻の形式が正しくありません"); return; }
+  if (!inV && !outV) { alert("出勤または退勤の時刻を入力してください（空欄のままは不可）"); return; }
+  var bU = Number(document.getElementById("bulkBreakU").value);
+  var bS = Number(document.getElementById("bulkBreakS").value);
+  if (isNaN(bU) || bU < 0) { alert("利用者の休憩は0以上の数字で入力してください"); return; }
+  if (isNaN(bS) || bS < 0) { alert("職員の休憩は0以上の数字で入力してください"); return; }
+  if (inV && outV && timeToMin(inV) >= timeToMin(outV)) { alert("退勤は出勤より後の時刻にしてください"); return; }
+  var morningOn = !!getBulkOpt("morning"), eveningOn = !!getBulkOpt("evening");
+  var recs = loadRecords();
+  var plan = [];
+  var newCnt = 0, overwriteCnt = 0, skipCnt = 0;
+  persons.forEach(function(p) {
+    days.forEach(function(d) {
+      var key = currentYM + "-" + pad(d) + "|" + p.id;
+      var exist = recs[key] || null;
+      var hasData = !!(exist && (exist.in || exist.out));
+      if (bulkMode === "skip" && hasData) { skipCnt++; return; }
+      if (hasData) overwriteCnt++; else newCnt++;
+      plan.push({ key: key, date: currentYM + "-" + pad(d), p: p });
+    });
+  });
+  if (!plan.length) { alert("入力する対象がありません（既存スキップで対象外でした）"); return; }
+  var ym = currentYM.split("-")[0] + "年" + Number(currentYM.split("-")[1]) + "月";
+  var msg = "「まとめて入力」を実行します。よろしいですか？\n\n";
+  msg += ym + " の対象日 " + days.length + "日 × 対象者 " + persons.length + "人 = " + plan.length + "件\n";
+  msg += "出勤 " + (inV || "未入力") + " / 退勤 " + (outV || "未入力") + "\n";
+  msg += "休憩 利用者" + bU + "分・職員" + bS + "分\n";
+  msg += "送迎（利用者） 行き" + (morningOn ? "あり" : "なし") + "・帰り" + (eveningOn ? "あり" : "なし") + "（職員は「なし」で記録）\n\n";
+  if (bulkMode === "over") {
+    msg += "上書きモード：既存の打刻 " + overwriteCnt + "件を上書きします。" + (overwriteCnt ? "上書きは取り消せません。" : "");
+  } else {
+    msg += "既存スキップモード：打刻済み " + skipCnt + "件は変更しません。";
+  }
+  if (!confirm(msg)) return;
+  plan.forEach(function(item) {
+    var isStaff = item.p.role === "職員";
+    var r = recs[item.key] || {};
+    r.date = item.date;
+    r.id = item.p.id;
+    r.in = inV || "";
+    r.out = outV || "";
+    r.break = isStaff ? bS : bU;
+    r.morning = isStaff ? 0 : (morningOn ? 1 : 0);
+    r.evening = isStaff ? 0 : (eveningOn ? 1 : 0);
+    recs[item.key] = r;
+  });
+  saveRecords(recs);
+  renderRecords();
+  renderExport();
+  alert(plan.length + "件を入力しました。" + (bulkMode === "over" && overwriteCnt ? "（うち " + overwriteCnt + "件を上書き）" : "") + (skipCnt ? "（スキップ " + skipCnt + "件）" : ""));
 }
 
 // ============ 出力・印刷 ============
