@@ -506,10 +506,14 @@ table.print-table.support-table th:nth-child(4), table.print-table.support-table
       <textarea id="tmplAfternoon" rows="3" placeholder="例：作業（内職・清掃など）、レクリエーション、振り返り" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px"></textarea>
     </div>
     <button class="save-btn" onclick="saveTemplate()">テンプレートを保存</button>
-    <h3 style="margin:26px 0 6px;font-size:15px">個別支援記録テンプレート（グループ別）</h3>
-    <p class="notice">出勤した利用者の個別支援記録に自動で入る内容です。グループごとに設定してください（報告書がある日は、テンプレートではなく報告内容が入ります）。</p>
+    <h3 style="margin:26px 0 6px;font-size:15px">個別支援記録テンプレート（作業グループ別）</h3>
+    <p class="notice">出勤した利用者の個別支援記録に自動で入る内容です。グループごとに設定してください（報告書がある日は、テンプレートではなく報告内容が入ります）。<b>1行に1バリエーションを書き、記録生成のたびにランダムに1つ選ばれます。</b></p>
     <div id="supportTmplFields"></div>
-    <button class="save-btn" onclick="saveSupportTmpl()">個別支援記録テンプレートを保存</button>
+    <button class="save-btn" onclick="saveSupportTmpl()">個別支援記録テンプレート（作業グループ別）を保存</button>
+    <h3 style="margin:26px 0 6px;font-size:15px">個別支援記録テンプレート（支援グループ別）</h3>
+    <p class="notice">「自立」「支援」それぞれの定型文です（報告書がある日は、テンプレートではなく報告内容が入ります）。複数行にした場合はランダムに1つ選ばれます。</p>
+    <div id="supportCareTmplFields"></div>
+    <button class="save-btn" onclick="saveSupportCareTmpl()">個別支援記録テンプレート（支援グループ別）を保存</button>
   </div>
 </div>
 
@@ -606,6 +610,14 @@ table.print-table.support-table th:nth-child(4), table.print-table.support-table
       <label>作業グループ（利用者に適用。個別支援記録のテンプレートが変わります）</label>
       <div id="staffGroupBtns" class="opt-row"></div>
     </div>
+    <div class="field" id="staffCareGroupField">
+      <label>支援グループ（利用者に適用。「自立」または「支援」）</label>
+      <div id="staffCareBtns" class="opt-row"></div>
+    </div>
+    <div class="field" id="staffNoteField">
+      <label>個別メモ（利用者に適用。任意。個別支援記録画面の追記欄に初期表示されます）</label>
+      <input id="newNote" type="text" placeholder="例：作業前に手順を見せると落ち着いて取り組める" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px;box-sizing:border-box">
+    </div>
     <button class="save-btn" onclick="addStaff()">追加</button>
     <div id="staffList" class="staff-list"></div>
   </div>
@@ -686,8 +698,18 @@ var TEMPLATE_KEY = "koko_template";
 var INCIDENT_KEY = "koko_incident";
 var SUPPORT_KEY = "koko_support";
 var SUPPORT_TMPL_KEY = "koko_support_tmpl";
+var SUPPORT_CARE_TMPL_KEY = "koko_support_care_tmpl";
 var SUPPORT_RECORDER_DEFAULT = "齊藤輝之";
-var SUPPORT_GROUPS = [ { name: "建材組み立て", template: "" }, { name: "清掃・猫飼育", template: "" } ];
+// 作業グループのテンプレート: 1行に1バリエーション。記録生成時に毎日ランダムに1つ選ばれる
+var SUPPORT_GROUPS = [
+  { name: "建材組み立て", template: "軽作業（建材組立等）に取り組んだ。\n建材の組み立て作業を丁寧に進めた。\n組立作業に集中して取り組めた。" },
+  { name: "清掃・猫飼育", template: "清掃と猫の飼育（餌やり・掃除等）に取り組んだ。\n館内の清掃や猫の世話を行った。\n清掃作業と猫のお世話を担当した。" }
+];
+// 支援グループのテンプレート: 定型文1種（ランダムなし）
+var SUPPORT_CARE_GROUPS = [
+  { name: "自立", template: "作業手順を把握しており、見守りと声かけによる支援を行った。" },
+  { name: "支援", template: "個別に作業手順を説明し、一緒に作業するなど丁寧な支援を行った。" }
+];
 
 function loadTemplate() {
   try {
@@ -842,7 +864,11 @@ function saveStamp(kind) {
   if (typeof recs[key].break === "undefined" || recs[key].break === null) recs[key].break = 60;
   saveRecords(recs);
   // 出勤打刻した利用者にはその日の個別支援記録を自動生成（無ければ）
-  if (kind === "in" && person.role === "利用者") ensureSupportRecord(todayStr(), person);
+  if (person.role === "利用者") {
+    if (kind === "in") ensureSupportRecord(todayStr(), person);
+    // 送迎文を最新の打刻値に追従（退勤打刻で帰り送迎が確定するため）
+    refreshSupportTransfer(todayStr(), person);
+  }
   closeModal();
   renderNameList();
   var label = kind === "in" ? "出勤" : kind === "out" ? "退勤" : "送迎";
@@ -872,6 +898,10 @@ function selectRole(el) {
   el.classList.add("selected");
   var gf = document.getElementById("staffGroupField");
   if (gf) gf.style.display = (selectedRole === "利用者") ? "" : "none";
+  var cf = document.getElementById("staffCareGroupField");
+  if (cf) cf.style.display = (selectedRole === "利用者") ? "" : "none";
+  var nf = document.getElementById("staffNoteField");
+  if (nf) nf.style.display = (selectedRole === "利用者") ? "" : "none";
 }
 
 // 名簿: 作業グループ選択（利用者のみ）
@@ -904,6 +934,44 @@ function setUserGroup(id, name) {
   renderStaff();
 }
 
+// 名簿: 支援グループ選択（利用者のみ）
+var selectedUserCareGroup = SUPPORT_CARE_GROUPS[0].name;
+function renderSupportCareGroupField() {
+  var t = loadSupportCareTmpl();
+  var html = "";
+  t.groups.forEach(function(g){
+    var sel = (g.name === selectedUserCareGroup) ? " selected" : "";
+    html += '<div class="opt-btn' + sel + '" data-cg="' + escapeHtml(g.name) + '" onclick="selectUserCareGroup(this)">' + escapeHtml(g.name) + '</div>';
+  });
+  document.getElementById("staffCareBtns").innerHTML = html;
+}
+function selectUserCareGroup(el) {
+  selectedUserCareGroup = el.dataset.cg;
+  document.querySelectorAll('#screen-staff .opt-btn[data-cg]').forEach(function(b){ b.classList.remove("selected"); });
+  el.classList.add("selected");
+}
+function careOptionHtml(selName) {
+  var html = "";
+  loadSupportCareTmpl().groups.forEach(function(g){
+    html += '<option value="' + escapeHtml(g.name) + '"' + (g.name === selName ? " selected" : "") + '>' + escapeHtml(g.name) + '</option>';
+  });
+  return html;
+}
+function setUserCareGroup(id, name) {
+  var list = loadStaff();
+  list.forEach(function(p){ if (p.id === id) p.careGroup = name; });
+  saveStaff(list);
+  renderStaff();
+}
+
+// 名簿: 個別メモの保存（利用者のみ）
+function setUserNote(id, val) {
+  var list = loadStaff();
+  list.forEach(function(p){ if (p.id === id) p.note = val; });
+  saveStaff(list);
+  renderStaff();
+}
+
 // ============ 管理者 ============
 function showManageEntry() { showScreen("screen-manage-entry"); document.getElementById("managePw").value=""; document.getElementById("managePwErr").textContent=""; }
 function checkManagePw() {
@@ -921,9 +989,12 @@ function addStaff() {
   for (var i = 0; i < list.length; i++) {
     if (list[i].name === name) { alert("同じ名前の人がすでに登録されています"); return; }
   }
-  list.push({ id: Date.now().toString(36), name: name, role: selectedRole, retired: false, group: selectedRole === "利用者" ? selectedUserGroup : "" });
+  var noteEl = document.getElementById("newNote");
+  var noteVal = (selectedRole === "利用者" && noteEl) ? noteEl.value.trim() : "";
+  list.push({ id: Date.now().toString(36), name: name, role: selectedRole, retired: false, group: selectedRole === "利用者" ? selectedUserGroup : "", careGroup: selectedRole === "利用者" ? selectedUserCareGroup : "", note: noteVal });
   saveStaff(list);
   document.getElementById("newName").value = "";
+  if (noteEl) noteEl.value = "";
   renderStaff();
 }
 // 退職にする（名簿・打刻画面からは消えるが、過去の実績・日誌・報告書はすべて残る）
@@ -949,6 +1020,8 @@ function renderStaff() {
     var groupHtml = "";
     if (p.role === "利用者") {
       groupHtml = '<div class="meta">作業グループ: <select onchange="setUserGroup(\'' + p.id + '\', this.value)">' + groupOptionHtml(p.group) + '</select></div>';
+      groupHtml += '<div class="meta">支援グループ: <select onchange="setUserCareGroup(\'' + p.id + '\', this.value)">' + careOptionHtml(p.careGroup) + '</select></div>';
+      groupHtml += '<div class="meta">個別メモ: <input type="text" style="width:100%;padding:6px 8px;border:1px solid #d9e0e8;border-radius:6px;font-size:13px;box-sizing:border-box" value="' + escapeHtml(p.note || "") + '" onchange="setUserNote(\'' + p.id + '\', this.value)" placeholder="追記欄に初期表示されるメモ（任意）"></div>';
     }
     html += '<div class="staff-item">' +
       '<div><div class="name">' + escapeHtml(p.name) + (p.retired ? ' <span style="color:#d93025">（退職）</span>' : '') + '</div><div class="meta">' + p.role + '</div>' + groupHtml + '</div>';
@@ -1093,6 +1166,7 @@ function editTime(key, field) {
   if (v === "") {
     r[field] = "";
     saveRecords(recs);
+    refreshSupportAfterRecordEdit(key);
     renderRecords();
     renderExport();
     return;
@@ -1103,6 +1177,7 @@ function editTime(key, field) {
   if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { alert("時刻が不正です（例：09:00・23:59）"); return; }
   r[field] = pad(hh) + ":" + pad(mm);
   saveRecords(recs);
+  refreshSupportAfterRecordEdit(key);
   renderRecords();
   renderExport();
 }
@@ -1117,6 +1192,7 @@ function editTransfer(key, field) {
   if (!makeOn) return;
   r[field] = next;
   saveRecords(recs);
+  refreshSupportAfterRecordEdit(key);
   renderRecords();
   renderExport();
 }
@@ -1343,7 +1419,10 @@ function applyBulk() {
   saveRecords(recs);
   // 過去埋め分も整合: 利用者に出勤が入った日は個別支援記録も自動生成（無ければ）
   plan.forEach(function(item) {
-    if (item.p.role === "利用者" && (inV || outV)) ensureSupportRecord(item.date, item.p);
+    if (item.p.role !== "利用者") return;
+    if (inV || outV) ensureSupportRecord(item.date, item.p);
+    // 送迎文を一括設定の値に追従（上書きで送迎が変わった日も含む）
+    refreshSupportTransfer(item.date, item.p);
   });
   renderRecords();
   renderExport();
@@ -1503,7 +1582,7 @@ function buildSupportSheet(person, ym) {
   if (!count) return "";
   var html = '<div class="sheet support-sheet">';
   html += '<div class="doc-head"><p class="facility">就労継続支援B型ココロオドル</p><p class="docname">個別支援記録</p></div>';
-  html += '<p class="person-line"><span>氏名：' + escapeHtml(person.name) + '</span><span>グループ：' + escapeHtml(userGroup(person)) + '</span><span>期間：' + ym.split("-")[0] + "年" + Number(ym.split("-")[1]) + "月</span></p>";
+  html += '<p class="person-line"><span>氏名：' + escapeHtml(person.name) + '</span><span>作業グループ：' + escapeHtml(userGroup(person)) + '</span><span>支援グループ：' + escapeHtml(userCareGroup(person)) + '</span><span>期間：' + ym.split("-")[0] + "年" + Number(ym.split("-")[1]) + "月</span></p>";
   html += '<table class="print-table support-table"><thead><tr><th>日付</th><th>曜日</th><th>記録内容</th><th>記録者</th></tr></thead><tbody>' + rows + '</tbody></table>';
   html += '<div class="doc-foot"><span>作成日：' + printDateStr() + '</span><div class="sig-field">管理者（確認・押印）<span class="sig-line"></span></div></div>';
   html += '</div>';
@@ -1699,14 +1778,49 @@ function loadSupportTmpl() {
 }
 function saveSupportTmplData(obj) { localStorage.setItem(SUPPORT_TMPL_KEY, JSON.stringify(obj)); }
 
+function loadSupportCareTmpl() {
+  try {
+    var t = JSON.parse(localStorage.getItem(SUPPORT_CARE_TMPL_KEY));
+    if (t && t.groups && t.groups.length) {
+      var names = t.groups.map(function(g){ return g.name; });
+      SUPPORT_CARE_GROUPS.forEach(function(dg){
+        if (names.indexOf(dg.name) < 0) t.groups.push({ name: dg.name, template: dg.template });
+      });
+      return t;
+    }
+  } catch(e) {}
+  return { groups: SUPPORT_CARE_GROUPS.map(function(g){ return { name: g.name, template: g.template }; }) };
+}
+function saveSupportCareTmplData(obj) { localStorage.setItem(SUPPORT_CARE_TMPL_KEY, JSON.stringify(obj)); }
+
 function groupTemplate(name) {
   var t = loadSupportTmpl();
   var g = null;
   t.groups.forEach(function(x){ if (x.name === name) g = x; });
   return g ? (g.template || "") : "";
 }
+function careTemplate(name) {
+  var t = loadSupportCareTmpl();
+  var g = null;
+  t.groups.forEach(function(x){ if (x.name === name) g = x; });
+  return g ? (g.template || "") : "";
+}
 function userGroup(p) {
   return (p && p.group) || SUPPORT_GROUPS[0].name;
+}
+function userCareGroup(p) {
+  return (p && p.careGroup) || SUPPORT_CARE_GROUPS[0].name;
+}
+
+// テンプレートの複数行から1行をランダムに選ぶ（空行は除外）
+function randomVariant(text) {
+  var lines = [];
+  (text || "").split("\n").forEach(function(l){
+    l = l.trim();
+    if (l) lines.push(l);
+  });
+  if (!lines.length) return "";
+  return lines[Math.floor(Math.random() * lines.length)];
 }
 function staffById(id) {
   var found = null;
@@ -1734,12 +1848,57 @@ function incidentLinesFor(ymd, userName) {
   return out;
 }
 
-// 記録テキストの決定: 報告書があればその内容、なければグループテンプレート
+// 記録テキストの決定: 報告書があればその内容、なければ定型文を組み合わせて生成
 function supportTextFor(ymd, person) {
   var incLines = [];
   incLines = incLines.concat(incidentLinesFor(ymd, person.name));
   if (incLines.length) return incLines.join("\n");
-  return groupTemplate(userGroup(person));
+  var recs = loadRecords();
+  var r = recs[ymd + "|" + person.id] || {};
+  var lines = [];
+  lines.push(r.morning ? "送迎にて通所した。" : "各自にて通所した。");
+  lines.push("体調良好。");
+  var w = randomVariant(groupTemplate(userGroup(person)));
+  if (w) lines.push(w);
+  var c = careTemplate(userCareGroup(person));
+  if (c) lines.push(c);
+  lines.push("作業に参加できていた。");
+  lines.push(r.evening ? "送迎にて退所した。" : "各自にて退所した。");
+  return lines.join("\n");
+}
+
+// 送迎文の自動追従: 記録が自動生成のまま（先頭=通所文・末尾=退所文）なら、最新の送迎値に差し替える
+function refreshSupportTransfer(ymd, person) {
+  if (!person || person.role !== "利用者") return;
+  var sup = loadSupport();
+  var key = ymd + "|" + person.id;
+  var s = sup[key];
+  if (!s || !s.text) return;
+  var recs = loadRecords();
+  var r = recs[key] || {};
+  var lines = s.text.split("\n");
+  var changed = false;
+  if (lines.length && (lines[0] === "送迎にて通所した。" || lines[0] === "各自にて通所した。")) {
+    lines[0] = r.morning ? "送迎にて通所した。" : "各自にて通所した。";
+    changed = true;
+  }
+  var last = lines.length ? lines[lines.length - 1] : "";
+  if (last === "送迎にて退所した。" || last === "各自にて退所した。") {
+    lines[lines.length - 1] = r.evening ? "送迎にて退所した。" : "各自にて退所した。";
+    changed = true;
+  }
+  if (changed) {
+    s.text = lines.join("\n");
+    s.updated = new Date().toISOString();
+    saveSupport(sup);
+  }
+}
+
+// 実績表のタップ編集（時刻・送迎）後にその日の個別支援記録へ追従させる
+function refreshSupportAfterRecordEdit(key) {
+  var parts = key.split("|");
+  if (parts.length !== 2) return;
+  refreshSupportTransfer(parts[0], staffById(parts[1]));
 }
 
 // 記録が無ければ自動生成（出勤打刻・まとめて入力・報告書保存時から呼ばれる）
@@ -1817,7 +1976,7 @@ function renderSupportTmplFields() {
   var html = "";
   t.groups.forEach(function(g, i){
     html += '<div class="field"><label>「' + escapeHtml(g.name) + '」グループ</label>' +
-      '<textarea id="supTmpl' + i + '" rows="3" placeholder="このグループの利用者の個別支援記録に自動で入る文章" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px;line-height:1.7;box-sizing:border-box;font-family:inherit">' + escapeHtml(g.template) + '</textarea></div>';
+      '<textarea id="supTmpl' + i + '" rows="3" placeholder="このグループの利用者の個別支援記録に自動で入る文章（1行に1バリエーション。毎日ランダムに選ばれます）" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px;line-height:1.7;box-sizing:border-box;font-family:inherit">' + escapeHtml(g.template) + '</textarea></div>';
   });
   var el = document.getElementById("supportTmplFields");
   if (el) el.innerHTML = html;
@@ -1830,7 +1989,34 @@ function saveSupportTmpl() {
     if (el) g.template = el.value;
   });
   saveSupportTmplData(t);
-  alert("個別支援記録テンプレートを保存しました");
+  alert("個別支援記録テンプレート（作業グループ別）を保存しました");
+}
+
+function renderSupportCareTmplFields() {
+  var t = loadSupportCareTmpl();
+  var html = "";
+  t.groups.forEach(function(g, i){
+    html += '<div class="field"><label>' + escapeHtml(g.name) + '</label>' +
+      '<textarea id="careTmpl' + i + '" rows="2" placeholder="このグループの利用者の個別支援記録に自動で入る定型文（1行に1バリエーション。複数行にした場合はランダム選択）" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px;line-height:1.7;box-sizing:border-box;font-family:inherit">' + escapeHtml(g.template) + '</textarea></div>';
+  });
+  var el = document.getElementById("supportCareTmplFields");
+  if (el) el.innerHTML = html;
+}
+
+function saveSupportCareTmpl() {
+  var t = loadSupportCareTmpl();
+  t.groups.forEach(function(g, i){
+    var el = document.getElementById("careTmpl" + i);
+    if (el) g.template = el.value;
+  });
+  saveSupportCareTmplData(t);
+  alert("個別支援記録テンプレート（支援グループ別）を保存しました");
+}
+
+// 未保存の日は「その日に入る予定の文章」をプレビュー表示（ランダム選択も1度きりで固定）
+var supportPreview = {};
+function supportRowBaseText(p, s) {
+  return s ? s.text : supportTextFor(currentSupportDay, p);
 }
 
 function renderSupport() {
@@ -1847,16 +2033,22 @@ function renderSupport() {
     var s = sup[currentSupportDay + "|" + p.id];
     return (r && (r.in || r.out)) || s;
   });
+  supportPreview = {};
   var html = "";
   rows.forEach(function(p, i) {
     var key = currentSupportDay + "|" + p.id;
     var s = sup[key] || null;
-    var text = s ? s.text : groupTemplate(userGroup(p));
+    var text = supportRowBaseText(p, s);
+    supportPreview[p.id] = text;
     var recorder = s ? s.recorder : SUPPORT_RECORDER_DEFAULT;
+    var note = p.note || "";
     html += '<div class="daily-sheet sup-row" data-id="' + p.id + '">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
     html += '<span style="font-size:16px;font-weight:700">' + escapeHtml(p.name) + '</span>';
-    html += '<span style="font-size:12px;color:#1a73e8;background:#e8f0fe;border-radius:10px;padding:4px 10px">' + escapeHtml(userGroup(p)) + '</span>';
+    html += '<span style="display:flex;gap:6px">' +
+      '<span style="font-size:12px;color:#1a73e8;background:#e8f0fe;border-radius:10px;padding:4px 10px">' + escapeHtml(userGroup(p)) + '</span>' +
+      '<span style="font-size:12px;color:#188038;background:#e6f4ea;border-radius:10px;padding:4px 10px">支援: ' + escapeHtml(userCareGroup(p)) + '</span>' +
+      '</span>';
     html += '</div>';
     html += '<div class="field"><label>記録内容</label>' +
       '<textarea id="supText' + i + '" rows="4" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:14px;line-height:1.7;box-sizing:border-box;font-family:inherit">' + escapeHtml(text) + '</textarea></div>';
@@ -1864,7 +2056,7 @@ function renderSupport() {
       '<input id="supRecorder' + i + '" type="text" list="staffNamesList" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px" value="' + escapeHtml(recorder) + '"></div>';
     html += '<div class="field"><label>追記（日時と記録者つきで末尾に追加されます）</label>' +
       '<div style="display:flex;gap:8px;align-items:center">' +
-      '<input id="supNote' + i + '" type="text" placeholder="追記する内容" style="flex:1;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:14px" onkeydown="if(event.key===\'Enter\'){appendSupportNote(' + i + ')}">' +
+      '<input id="supNote' + i + '" type="text" value="' + escapeHtml(note) + '" placeholder="追記する内容" style="flex:1;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:14px" onkeydown="if(event.key===\'Enter\'){appendSupportNote(' + i + ')}">' +
       '<button class="del-btn" style="flex:0 0 auto;background:#e8f0fe;color:#1a73e8;padding:12px 18px;border-radius:8px" onclick="appendSupportNote(' + i + ')">追記</button>' +
       '</div></div>';
     html += '</div>';
@@ -1933,7 +2125,7 @@ function supportFormDirty() {
     var s = sup[key] || null;
     var ta = row.querySelector("textarea");
     var ri = row.querySelector("input[list]");
-    var baseText = s ? s.text : groupTemplate(userGroup(person));
+    var baseText = supportPreview.hasOwnProperty(person.id) ? supportPreview[person.id] : supportRowBaseText(person, s);
     var baseRecorder = s ? s.recorder : SUPPORT_RECORDER_DEFAULT;
     if (ta && ta.value !== baseText) return true;
     if (ri && ri.value !== baseRecorder) return true;
@@ -2274,6 +2466,7 @@ function renderTemplateForm() {
   document.getElementById("tmplMorning").value = t.morning;
   document.getElementById("tmplAfternoon").value = t.afternoon;
   renderSupportTmplFields();
+  renderSupportCareTmplFields();
 }
 function saveTemplate() {
   saveTemplateData({
@@ -2284,7 +2477,7 @@ function saveTemplate() {
 }
 
 // ============ データバックアップ ============
-var BACKUP_KEYS = [STAFF_KEY, RECORDS_KEY, DAILY_KEY, TEMPLATE_KEY, INCIDENT_KEY, SUPPORT_KEY, SUPPORT_TMPL_KEY];
+var BACKUP_KEYS = [STAFF_KEY, RECORDS_KEY, DAILY_KEY, TEMPLATE_KEY, INCIDENT_KEY, SUPPORT_KEY, SUPPORT_TMPL_KEY, SUPPORT_CARE_TMPL_KEY];
 var BACKUP_MAGIC = "koko-odoroku-backup";
 
 function exportBackup() {
@@ -2329,6 +2522,7 @@ function importBackup() {
 // ============ 初期化 ============
 renderNameList();
 renderSupportGroupField();
+renderSupportCareGroupField();
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(function(){});
 }
