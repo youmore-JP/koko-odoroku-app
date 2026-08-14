@@ -230,6 +230,12 @@ table.daily-table th { background: #eef1f5; }
 .daily-count-input { width: 90px; padding: 10px; font-size: 16px; text-align: center; border: 1px solid #d9e0e8; border-radius: 8px; }
 .daily-action { margin-top: 14px; }
 
+/* 個別支援記録（月間シート・日付/曜日は中央、記録内容は左寄せ） */
+table.print-table.support-table th:nth-child(1), table.print-table.support-table td:nth-child(1),
+table.print-table.support-table th:nth-child(2), table.print-table.support-table td:nth-child(2) { width: 9%; text-align: center; }
+table.print-table.support-table th:nth-child(3), table.print-table.support-table td:nth-child(3) { width: 68%; text-align: left; }
+table.print-table.support-table th:nth-child(4), table.print-table.support-table td:nth-child(4) { width: 14%; text-align: left; }
+
 /* 事故報告：大きなタップボタン（高齢の職員向け） */
 .inc-row { flex-wrap: wrap; }
 .inc-row .opt-btn {
@@ -426,6 +432,7 @@ table.daily-table th { background: #eef1f5; }
       <div class="menu-card" onclick="showScreen('screen-records')"><h3>月間実績表</h3><p>確認・修正・印刷</p></div>
       <div class="menu-card" onclick="showScreen('screen-staff')"><h3>名簿管理</h3><p>職員・利用者の追加・削除</p></div>
       <div class="menu-card" onclick="showScreen('screen-daily')"><h3>業務日誌</h3><p>日別の活動記録・入力</p></div>
+      <div class="menu-card" onclick="showScreen('screen-support')"><h3>個別支援記録</h3><p>利用者ごとの支援記録・確認・追記</p></div>
       <div class="menu-card" onclick="showScreen('screen-incident')"><h3>ヒヤリハット・事故報告</h3><p>報告書の作成・一覧・印刷</p></div>
       <div class="menu-card" onclick="showScreen('screen-template')"><h3>活動テンプレート</h3><p>午前・午後の基本活動を設定</p></div>
       <div class="menu-card" onclick="showScreen('screen-export')"><h3>PDF出力・印刷</h3><p>1か月分の実績・業務日誌を印刷</p></div>
@@ -469,6 +476,21 @@ table.daily-table th { background: #eef1f5; }
   </div>
 </div>
 
+<!-- ===== 個別支援記録 ===== -->
+<div id="screen-support" class="screen">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('screen-manage-menu')">← 管理者メニューへ</button>
+    <h2>個別支援記録</h2>
+    <p class="notice">出勤した利用者の記録が自動で作られます（その日の報告書があれば報告内容、なければグループのテンプレート）。必要があれば編集・追記して「保存」してください。1人1日1件です。</p>
+    <div class="month-nav">
+      <button onclick="changeSupportDay(-1)">◀ 前日</button>
+      <span class="ym" id="supportDate"></span>
+      <button onclick="changeSupportDay(1)">翌日 ▶</button>
+    </div>
+    <div id="supportForm"></div>
+  </div>
+</div>
+
 <!-- ===== 活動テンプレート ===== -->
 <div id="screen-template" class="screen">
   <div class="container">
@@ -484,6 +506,10 @@ table.daily-table th { background: #eef1f5; }
       <textarea id="tmplAfternoon" rows="3" placeholder="例：作業（内職・清掃など）、レクリエーション、振り返り" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px"></textarea>
     </div>
     <button class="save-btn" onclick="saveTemplate()">テンプレートを保存</button>
+    <h3 style="margin:26px 0 6px;font-size:15px">個別支援記録テンプレート（グループ別）</h3>
+    <p class="notice">出勤した利用者の個別支援記録に自動で入る内容です。グループごとに設定してください（報告書がある日は、テンプレートではなく報告内容が入ります）。</p>
+    <div id="supportTmplFields"></div>
+    <button class="save-btn" onclick="saveSupportTmpl()">個別支援記録テンプレートを保存</button>
   </div>
 </div>
 
@@ -576,6 +602,10 @@ table.daily-table th { background: #eef1f5; }
         <div class="opt-btn selected" data-role="利用者" onclick="selectRole(this)">利用者</div>
       </div>
     </div>
+    <div class="field" id="staffGroupField">
+      <label>作業グループ（利用者に適用。個別支援記録のテンプレートが変わります）</label>
+      <div id="staffGroupBtns" class="opt-row"></div>
+    </div>
     <button class="save-btn" onclick="addStaff()">追加</button>
     <div id="staffList" class="staff-list"></div>
   </div>
@@ -592,9 +622,10 @@ table.daily-table th { background: #eef1f5; }
       <span class="ym" id="exportYM"></span>
       <button onclick="changeMonthExport(1)">次月 ▶</button>
     </div>
-    <div class="opt-row" style="max-width:400px;margin:0 auto 16px;">
+    <div class="opt-row" style="max-width:520px;margin:0 auto 16px;">
       <div class="opt-btn selected" data-etype="record" onclick="selectExportType(this)">勤退実績表</div>
       <div class="opt-btn" data-etype="daily" onclick="selectExportType(this)">業務日誌</div>
+      <div class="opt-btn" data-etype="support" onclick="selectExportType(this)">個別支援記録</div>
     </div>
     <button class="save-btn" onclick="doPrint()">印刷 / PDF保存</button>
     <div id="exportList"></div>
@@ -652,6 +683,11 @@ var STAFF_KEY = "koko_staff";
 var RECORDS_KEY = "koko_records";
 var DAILY_KEY = "koko_daily";
 var TEMPLATE_KEY = "koko_template";
+var INCIDENT_KEY = "koko_incident";
+var SUPPORT_KEY = "koko_support";
+var SUPPORT_TMPL_KEY = "koko_support_tmpl";
+var SUPPORT_RECORDER_DEFAULT = "齊藤輝之";
+var SUPPORT_GROUPS = [ { name: "建材組み立て", template: "" }, { name: "清掃・猫飼育", template: "" } ];
 
 function loadTemplate() {
   try {
@@ -695,6 +731,9 @@ function showScreen(id) {
   if (cur && cur.id === "screen-incident-form" && id !== "screen-incident-form" && incidentFormDirty()) {
     if (!confirm("事故報告書の入力内容はまだ保存されていません。移動すると失われます。移動しますか？")) return;
   }
+  if (cur && cur.id === "screen-support" && id !== "screen-support" && supportFormDirty()) {
+    if (!confirm("個別支援記録の入力内容はまだ保存されていません。移動すると失われます。移動しますか？")) return;
+  }
   document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("active"); });
   document.getElementById(id).classList.add("active");
   window.scrollTo(0, 0);
@@ -705,6 +744,7 @@ function showScreen(id) {
   if (id === "screen-daily") renderDaily();
   if (id === "screen-incident") renderIncidentList();
   if (id === "screen-template") renderTemplateForm();
+  if (id === "screen-support") renderSupport();
 }
 
 // ============ 打刻画面 ============
@@ -801,6 +841,8 @@ function saveStamp(kind) {
   recs[key].evening = getOpt("evening");
   if (typeof recs[key].break === "undefined" || recs[key].break === null) recs[key].break = 60;
   saveRecords(recs);
+  // 出勤打刻した利用者にはその日の個別支援記録を自動生成（無ければ）
+  if (kind === "in" && person.role === "利用者") ensureSupportRecord(todayStr(), person);
   closeModal();
   renderNameList();
   var label = kind === "in" ? "出勤" : kind === "out" ? "退勤" : "送迎";
@@ -828,6 +870,38 @@ function selectRole(el) {
     b.classList.remove("selected");
   });
   el.classList.add("selected");
+  var gf = document.getElementById("staffGroupField");
+  if (gf) gf.style.display = (selectedRole === "利用者") ? "" : "none";
+}
+
+// 名簿: 作業グループ選択（利用者のみ）
+var selectedUserGroup = SUPPORT_GROUPS[0].name;
+function renderSupportGroupField() {
+  var t = loadSupportTmpl();
+  var html = "";
+  t.groups.forEach(function(g){
+    var sel = (g.name === selectedUserGroup) ? " selected" : "";
+    html += '<div class="opt-btn' + sel + '" data-sg="' + escapeHtml(g.name) + '" onclick="selectUserGroup(this)">' + escapeHtml(g.name) + '</div>';
+  });
+  document.getElementById("staffGroupBtns").innerHTML = html;
+}
+function selectUserGroup(el) {
+  selectedUserGroup = el.dataset.sg;
+  document.querySelectorAll('#screen-staff .opt-btn[data-sg]').forEach(function(b){ b.classList.remove("selected"); });
+  el.classList.add("selected");
+}
+function groupOptionHtml(selName) {
+  var html = "";
+  loadSupportTmpl().groups.forEach(function(g){
+    html += '<option value="' + escapeHtml(g.name) + '"' + (g.name === selName ? " selected" : "") + '>' + escapeHtml(g.name) + '</option>';
+  });
+  return html;
+}
+function setUserGroup(id, name) {
+  var list = loadStaff();
+  list.forEach(function(p){ if (p.id === id) p.group = name; });
+  saveStaff(list);
+  renderStaff();
 }
 
 // ============ 管理者 ============
@@ -847,7 +921,7 @@ function addStaff() {
   for (var i = 0; i < list.length; i++) {
     if (list[i].name === name) { alert("同じ名前の人がすでに登録されています"); return; }
   }
-  list.push({ id: Date.now().toString(36), name: name, role: selectedRole, retired: false });
+  list.push({ id: Date.now().toString(36), name: name, role: selectedRole, retired: false, group: selectedRole === "利用者" ? selectedUserGroup : "" });
   saveStaff(list);
   document.getElementById("newName").value = "";
   renderStaff();
@@ -872,8 +946,12 @@ function renderStaff() {
   var list = loadStaff();
   var html = "";
   list.forEach(function(p) {
+    var groupHtml = "";
+    if (p.role === "利用者") {
+      groupHtml = '<div class="meta">作業グループ: <select onchange="setUserGroup(\'' + p.id + '\', this.value)">' + groupOptionHtml(p.group) + '</select></div>';
+    }
     html += '<div class="staff-item">' +
-      '<div><div class="name">' + escapeHtml(p.name) + (p.retired ? ' <span style="color:#d93025">（退職）</span>' : '') + '</div><div class="meta">' + p.role + '</div></div>';
+      '<div><div class="name">' + escapeHtml(p.name) + (p.retired ? ' <span style="color:#d93025">（退職）</span>' : '') + '</div><div class="meta">' + p.role + '</div>' + groupHtml + '</div>';
     if (p.retired) {
       html += '<button class="del-btn" style="background:#e8f0fe;color:#1a73e8" onclick="restoreStaff(\'' + p.id + '\')">復帰</button>';
     } else {
@@ -1263,6 +1341,10 @@ function applyBulk() {
     recs[item.key] = r;
   });
   saveRecords(recs);
+  // 過去埋め分も整合: 利用者に出勤が入った日は個別支援記録も自動生成（無ければ）
+  plan.forEach(function(item) {
+    if (item.p.role === "利用者" && (inV || outV)) ensureSupportRecord(item.date, item.p);
+  });
   renderRecords();
   renderExport();
   alert(plan.length + "件を入力しました。" + (bulkMode === "over" && overwriteCnt ? "（うち " + overwriteCnt + "件を上書き）" : "") + (skipCnt ? "（スキップ " + skipCnt + "件）" : ""));
@@ -1282,6 +1364,8 @@ function renderExport() {
   var html = "";
   if (exportType === "record") {
     list.forEach(function(p) { html += buildSheet(p, currentYM); });
+  } else if (exportType === "support") {
+    html = buildSupportSheetsForMonth(currentYM);
   } else {
     html = buildDailySheetsForMonth(currentYM);
   }
@@ -1290,6 +1374,11 @@ function renderExport() {
 function doPrint() {
   if (exportType === "daily") {
     var html = buildDailySheetsForMonth(currentYM);
+    document.getElementById("print-daily-container").innerHTML = html;
+    window.print();
+    document.getElementById("print-daily-container").innerHTML = "";
+  } else if (exportType === "support") {
+    var html = buildSupportSheetsForMonth(currentYM);
     document.getElementById("print-daily-container").innerHTML = html;
     window.print();
     document.getElementById("print-daily-container").innerHTML = "";
@@ -1379,6 +1468,44 @@ function buildDailySheet(ymd) {
   html += '<div class="sig-field">記録者（署名・押印）<span class="sig-line"></span></div>';
   html += '<div class="sig-field">管理者（確認・押印）<span class="sig-line"></span></div>';
   html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+// 個別支援記録の月間シート（利用者ごと。記録または出勤のある日だけ行を出す）
+function buildSupportSheetsForMonth(ym) {
+  var html = "";
+  loadStaff().filter(function(p){ return p.role === "利用者"; }).forEach(function(p) {
+    html += buildSupportSheet(p, ym);
+  });
+  return html;
+}
+
+function buildSupportSheet(person, ym) {
+  var days = monthDays(ym);
+  var recs = loadRecords();
+  var sup = loadSupport();
+  var rows = "";
+  var count = 0;
+  for (var d = 1; d <= days; d++) {
+    var ymd = ym + "-" + pad(d);
+    var key = ymd + "|" + person.id;
+    var s = sup[key] || null;
+    var r = recs[key] || null;
+    if (!s && !(r && (r.in || r.out))) continue;
+    var wk = WEEK[new Date(Number(ym.split("-")[0]), Number(ym.split("-")[1])-1, d).getDay()];
+    var text = s ? s.text : "";
+    var recorder = s ? s.recorder : "";
+    var cls = (wk === "日" || wk === "土") ? ' style="background:#f7f7f7"' : "";
+    rows += '<tr' + cls + '><td>' + ym.split("-")[1] + "/" + d + '</td><td>' + wk + '</td><td>' + (text ? escapeHtml(text).replace(/\n/g, "<br>") : "&nbsp;") + '</td><td>' + escapeHtml(recorder) + '</td></tr>';
+    count++;
+  }
+  if (!count) return "";
+  var html = '<div class="sheet support-sheet">';
+  html += '<div class="doc-head"><p class="facility">就労継続支援B型ココロオドル</p><p class="docname">個別支援記録</p></div>';
+  html += '<p class="person-line"><span>氏名：' + escapeHtml(person.name) + '</span><span>グループ：' + escapeHtml(userGroup(person)) + '</span><span>期間：' + ym.split("-")[0] + "年" + Number(ym.split("-")[1]) + "月</span></p>";
+  html += '<table class="print-table support-table"><thead><tr><th>日付</th><th>曜日</th><th>記録内容</th><th>記録者</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  html += '<div class="doc-foot"><span>作成日：' + printDateStr() + '</span><div class="sig-field">管理者（確認・押印）<span class="sig-line"></span></div></div>';
   html += '</div>';
   return html;
 }
@@ -1550,8 +1677,271 @@ function printDaily() {
   document.getElementById("print-daily-container").innerHTML = "";
 }
 
+// ============ 個別支援記録（データ層） ============
+function loadSupport() {
+  try { return JSON.parse(localStorage.getItem(SUPPORT_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function saveSupport(obj) { localStorage.setItem(SUPPORT_KEY, JSON.stringify(obj)); }
+
+function loadSupportTmpl() {
+  try {
+    var t = JSON.parse(localStorage.getItem(SUPPORT_TMPL_KEY));
+    if (t && t.groups && t.groups.length) {
+      var names = t.groups.map(function(g){ return g.name; });
+      SUPPORT_GROUPS.forEach(function(dg){
+        if (names.indexOf(dg.name) < 0) t.groups.push({ name: dg.name, template: "" });
+      });
+      return t;
+    }
+  } catch(e) {}
+  return { groups: SUPPORT_GROUPS.map(function(g){ return { name: g.name, template: g.template }; }) };
+}
+function saveSupportTmplData(obj) { localStorage.setItem(SUPPORT_TMPL_KEY, JSON.stringify(obj)); }
+
+function groupTemplate(name) {
+  var t = loadSupportTmpl();
+  var g = null;
+  t.groups.forEach(function(x){ if (x.name === name) g = x; });
+  return g ? (g.template || "") : "";
+}
+function userGroup(p) {
+  return (p && p.group) || SUPPORT_GROUPS[0].name;
+}
+function staffById(id) {
+  var found = null;
+  loadStaff().forEach(function(p){ if (p.id === id) found = p; });
+  return found;
+}
+
+// その日に「その利用者が当事者」の報告書の行を返す（複数時は改行連結）
+function incidentLinesFor(ymd, userName) {
+  var out = [];
+  loadIncidents().filter(function(x){
+    if (x.date !== ymd) return false;
+    var users = (x.users && x.users.length) ? x.users : (x.userName ? [x.userName] : []);
+    return users.indexOf(userName) >= 0;
+  }).forEach(function(x){
+    var label = x.type === "アクシデント" ? "事故" : "ヒヤリハット";
+    var cats = (x.cats && x.cats.length) ? x.cats.join("・") : "";
+    var line = "【" + label + "】" + (cats ? cats + "：" : "") + (x.content || "");
+    var respParts = [];
+    if (x.responseSel && x.responseSel.length) respParts = respParts.concat(x.responseSel);
+    if (x.responseNote) respParts.push(x.responseNote);
+    if (respParts.length) line += "（対応：" + respParts.join("・") + "）";
+    out.push(line);
+  });
+  return out;
+}
+
+// 記録テキストの決定: 報告書があればその内容、なければグループテンプレート
+function supportTextFor(ymd, person) {
+  var incLines = [];
+  incLines = incLines.concat(incidentLinesFor(ymd, person.name));
+  if (incLines.length) return incLines.join("\n");
+  return groupTemplate(userGroup(person));
+}
+
+// 記録が無ければ自動生成（出勤打刻・まとめて入力・報告書保存時から呼ばれる）
+function ensureSupportRecord(ymd, person) {
+  if (!person || person.role !== "利用者") return;
+  var sup = loadSupport();
+  var key = ymd + "|" + person.id;
+  if (sup[key]) return; // 既存の記録は上書きしない
+  sup[key] = {
+    date: ymd,
+    id: person.id,
+    group: userGroup(person),
+    text: supportTextFor(ymd, person),
+    recorder: SUPPORT_RECORDER_DEFAULT,
+    updated: new Date().toISOString()
+  };
+  saveSupport(sup);
+}
+
+// 報告書保存時に当事者利用者の記録へ反映（無ければ新規 / テンプレのままなら置き換え / 手書き済みなら追記）
+function applyIncidentToSupport(data) {
+  var ymd = data.date;
+  if (!ymd) return;
+  var users = (data.users && data.users.length) ? data.users : (data.userName ? [data.userName] : []);
+  var sup = loadSupport();
+  var changed = false;
+  users.forEach(function(name) {
+    var person = null;
+    loadStaff().forEach(function(p){ if (p.name === name) person = p; });
+    if (!person || person.role !== "利用者") return;
+    var line = incidentLinesFor(ymd, name).join("\n");
+    if (!line) return;
+    var key = ymd + "|" + person.id;
+    if (!sup[key]) {
+      sup[key] = {
+        date: ymd, id: person.id, group: userGroup(person),
+        text: line, recorder: SUPPORT_RECORDER_DEFAULT,
+        updated: new Date().toISOString()
+      };
+      changed = true;
+    } else {
+      var tpl = groupTemplate(userGroup(person));
+      if (!sup[key].text || sup[key].text === tpl) {
+        sup[key].text = line;
+      } else {
+        sup[key].text = sup[key].text + "\n" + line;
+      }
+      sup[key].group = userGroup(person);
+      sup[key].updated = new Date().toISOString();
+      changed = true;
+    }
+  });
+  if (changed) saveSupport(sup);
+}
+
+// ============ 個別支援記録（画面） ============
+var currentSupportDay = todayStr();
+
+function supportDayLabel(ymd) {
+  var p = ymd.split("-");
+  var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  return p[0] + "年" + Number(p[1]) + "月" + Number(p[2]) + "日（" + WEEK[d.getDay()] + "）";
+}
+
+function changeSupportDay(delta) {
+  if (supportFormDirty() && !confirm("個別支援記録の入力内容はまだ保存されていません。移動すると失われます。移動しますか？")) return;
+  var p = currentSupportDay.split("-");
+  var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]) + delta);
+  currentSupportDay = d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+  renderSupport();
+}
+
+function renderSupportTmplFields() {
+  var t = loadSupportTmpl();
+  var html = "";
+  t.groups.forEach(function(g, i){
+    html += '<div class="field"><label>「' + escapeHtml(g.name) + '」グループ</label>' +
+      '<textarea id="supTmpl' + i + '" rows="3" placeholder="このグループの利用者の個別支援記録に自動で入る文章" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px;line-height:1.7;box-sizing:border-box;font-family:inherit">' + escapeHtml(g.template) + '</textarea></div>';
+  });
+  var el = document.getElementById("supportTmplFields");
+  if (el) el.innerHTML = html;
+}
+
+function saveSupportTmpl() {
+  var t = loadSupportTmpl();
+  t.groups.forEach(function(g, i){
+    var el = document.getElementById("supTmpl" + i);
+    if (el) g.template = el.value;
+  });
+  saveSupportTmplData(t);
+  alert("個別支援記録テンプレートを保存しました");
+}
+
+function renderSupport() {
+  document.getElementById("supportDate").textContent = supportDayLabel(currentSupportDay);
+  var list = loadStaff();
+  var recs = loadRecords();
+  var sup = loadSupport();
+  var dl = '<datalist id="staffNamesList">';
+  list.filter(function(p){ return p.role === "職員"; }).forEach(function(p){ dl += '<option value="' + escapeHtml(p.name) + '">'; });
+  dl += '</datalist>';
+  var users = list.filter(function(p){ return p.role === "利用者"; });
+  var rows = users.filter(function(p){
+    var r = recs[currentSupportDay + "|" + p.id];
+    var s = sup[currentSupportDay + "|" + p.id];
+    return (r && (r.in || r.out)) || s;
+  });
+  var html = "";
+  rows.forEach(function(p, i) {
+    var key = currentSupportDay + "|" + p.id;
+    var s = sup[key] || null;
+    var text = s ? s.text : groupTemplate(userGroup(p));
+    var recorder = s ? s.recorder : SUPPORT_RECORDER_DEFAULT;
+    html += '<div class="daily-sheet sup-row" data-id="' + p.id + '">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    html += '<span style="font-size:16px;font-weight:700">' + escapeHtml(p.name) + '</span>';
+    html += '<span style="font-size:12px;color:#1a73e8;background:#e8f0fe;border-radius:10px;padding:4px 10px">' + escapeHtml(userGroup(p)) + '</span>';
+    html += '</div>';
+    html += '<div class="field"><label>記録内容</label>' +
+      '<textarea id="supText' + i + '" rows="4" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:14px;line-height:1.7;box-sizing:border-box;font-family:inherit">' + escapeHtml(text) + '</textarea></div>';
+    html += '<div class="field"><label>記録者</label>' +
+      '<input id="supRecorder' + i + '" type="text" list="staffNamesList" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px" value="' + escapeHtml(recorder) + '"></div>';
+    html += '<div class="field"><label>追記（日時と記録者つきで末尾に追加されます）</label>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+      '<input id="supNote' + i + '" type="text" placeholder="追記する内容" style="flex:1;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:14px" onkeydown="if(event.key===\'Enter\'){appendSupportNote(' + i + ')}">' +
+      '<button class="del-btn" style="flex:0 0 auto;background:#e8f0fe;color:#1a73e8;padding:12px 18px;border-radius:8px" onclick="appendSupportNote(' + i + ')">追記</button>' +
+      '</div></div>';
+    html += '</div>';
+  });
+  html = dl + html;
+  html += rows.length
+    ? '<button class="save-btn" onclick="saveSupportForm()">この日の記録を保存</button>'
+    : '<p class="notice">この日に出勤した利用者がいません（前日・翌日で移動できます）。</p>';
+  document.getElementById("supportForm").innerHTML = html;
+}
+
+function appendSupportNote(i) {
+  var ta = document.getElementById("supText" + i);
+  var ni = document.getElementById("supNote" + i);
+  var ri = document.getElementById("supRecorder" + i);
+  if (!ta || !ni) return;
+  var txt = ni.value.trim();
+  if (!txt) { alert("追記する内容を入力してください"); return; }
+  var d = new Date();
+  var stamp = "〔追記 " + (d.getMonth()+1) + "/" + d.getDate() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + " " + (ri && ri.value.trim() ? ri.value.trim() : SUPPORT_RECORDER_DEFAULT) + "〕" + txt;
+  ta.value = ta.value ? ta.value + "\n" + stamp : stamp;
+  ni.value = "";
+  ta.focus();
+}
+
+function saveSupportForm() {
+  var sup = loadSupport();
+  var rows = document.querySelectorAll("#supportForm .sup-row");
+  var cnt = 0;
+  rows.forEach(function(row) {
+    var person = staffById(row.dataset.id);
+    if (!person || person.role !== "利用者") return;
+    var key = currentSupportDay + "|" + person.id;
+    var ta = row.querySelector("textarea");
+    var ri = row.querySelector("input[list]");
+    if (!ta) return;
+    var s = sup[key];
+    if (!s) {
+      s = { date: currentSupportDay, id: person.id, group: userGroup(person), recorder: SUPPORT_RECORDER_DEFAULT, updated: new Date().toISOString() };
+      sup[key] = s;
+    }
+    s.text = ta.value;
+    s.group = userGroup(person);
+    if (ri) {
+      s.recorder = ri.value.trim() || SUPPORT_RECORDER_DEFAULT;
+    }
+    s.updated = new Date().toISOString();
+    cnt++;
+  });
+  saveSupport(sup);
+  renderSupport();
+  alert(cnt + "件の個別支援記録を保存しました");
+}
+
+// 個別支援記録フォームに未保存の変更があるか
+function supportFormDirty() {
+  var f = document.getElementById("supportForm");
+  if (!f || !f.innerHTML) return false;
+  var sup = loadSupport();
+  var rows = document.querySelectorAll("#supportForm .sup-row");
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var person = staffById(row.dataset.id);
+    if (!person) continue;
+    var key = currentSupportDay + "|" + person.id;
+    var s = sup[key] || null;
+    var ta = row.querySelector("textarea");
+    var ri = row.querySelector("input[list]");
+    var baseText = s ? s.text : groupTemplate(userGroup(person));
+    var baseRecorder = s ? s.recorder : SUPPORT_RECORDER_DEFAULT;
+    if (ta && ta.value !== baseText) return true;
+    if (ri && ri.value !== baseRecorder) return true;
+  }
+  return false;
+}
+
 // ============ ヒヤリハット・事故報告 ============
-var INCIDENT_KEY = "koko_incident";
 function loadIncidents() {
   try { return JSON.parse(localStorage.getItem(INCIDENT_KEY)) || []; }
   catch(e) { return []; }
@@ -1818,6 +2208,8 @@ function saveIncident(andPrint) {
   saveIncidents(list);
   currentIncidentId = currentIncidentId || data.id;
   incidentBaseline = collectIncident();
+  // 当事者（利用者）の個別支援記録へ報告内容を反映
+  applyIncidentToSupport(data);
   if (andPrint) {
     var r = list.find(function(x){ return x.id === currentIncidentId; });
     printIncident(r.id);
@@ -1881,6 +2273,7 @@ function renderTemplateForm() {
   var t = loadTemplate();
   document.getElementById("tmplMorning").value = t.morning;
   document.getElementById("tmplAfternoon").value = t.afternoon;
+  renderSupportTmplFields();
 }
 function saveTemplate() {
   saveTemplateData({
@@ -1891,7 +2284,7 @@ function saveTemplate() {
 }
 
 // ============ データバックアップ ============
-var BACKUP_KEYS = [STAFF_KEY, RECORDS_KEY, DAILY_KEY, TEMPLATE_KEY, INCIDENT_KEY];
+var BACKUP_KEYS = [STAFF_KEY, RECORDS_KEY, DAILY_KEY, TEMPLATE_KEY, INCIDENT_KEY, SUPPORT_KEY, SUPPORT_TMPL_KEY];
 var BACKUP_MAGIC = "koko-odoroku-backup";
 
 function exportBackup() {
@@ -1935,6 +2328,7 @@ function importBackup() {
 
 // ============ 初期化 ============
 renderNameList();
+renderSupportGroupField();
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(function(){});
 }

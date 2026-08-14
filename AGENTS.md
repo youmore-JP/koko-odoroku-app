@@ -7,7 +7,7 @@
 - アプリ: 就労継続支援B型「ココロオドル」勤退管理(タイムカード) PWA
 - 実体: 単一ファイル `index.html`(データ処理全部入り) + `manifest.json` + `sw.js` + アイコン2枚
 - データ: **すべて `localStorage` に保存**(サーバー不要・端末内保存)
-  - `RECORDS_KEY`=打刻, `DAILY_KEY`=業務日誌, `INCIDENT_KEY`=ヒヤリハット・事故報告, `STAFF_KEY`=名簿, `TEMPLATE_KEY`=活動テンプレート
+  - `RECORDS_KEY`=打刻, `DAILY_KEY`=業務日誌, `INCIDENT_KEY`=ヒヤリハット・事故報告, `STAFF_KEY`=名簿, `TEMPLATE_KEY`=活動テンプレート, `SUPPORT_KEY`=個別支援記録, `SUPPORT_TMPL_KEY`=個別支援記録テンプレート(グループ別)
   - GitHub に上がるのはプログラムのみ。実データは一切含まれない
 - 運用: **GitHub Pages**(無料・常時HTTPS・常時稼働)で公開 → AndroidタブレットでPWAインストール → オフライン動作
 - インストール済みタブレットは、最初の1回読み込み以降は完全オフラインで動く(Service Workerキャッシュ)
@@ -46,12 +46,17 @@
 - `screen-manage-entry`: 管理者パスワード入力 → `screen-manage-menu`(管理者メニュー)
 - `screen-daily`: 業務日誌(特記事項に事故報告を自動反映)
 - `screen-incident`: ヒヤリハット・事故報告一覧 / `screen-incident-form`: 報告フォーム
+- `screen-support`: 個別支援記録(日付単位の確認・編集・追記)
 - `screen-records`/`screen-staff`/`screen-template`/`screen-export`/`screen-backup`: 管理系
 
 ## 実装済み機能メモ
 
 - 事故報告フォームの戻るボタンは「どこから開いたか」で動的変化: `incidentFormFrom`(`main`=打刻画面へ / `list`=報告書一覧へ)。一覧→新規作成は `openIncidentForm('list')`
 - 業務日誌の特記事項にその日の報告書を自動反映: `incidentSummaryFor(ymd)` が `ヒヤリハットあり（当事者〇〇・〇〇）、事故あり（当事者〇〇）` を動的生成(表示・印刷両方)。報告書の追加/編集/削除に自動追従。当事者は `users`(利用者)+`staffs`(職員)
+- **個別支援記録の自動生成**: 利用者の出勤打刻時(`saveStamp`)とまとめて入力(`applyBulk`)で、その日の記録が無ければ `ensureSupportRecord()` が自動生成(1人1日1件・`SUPPORT_KEY` に `YYYY-MM-DD|userid` キーで保存)。テキストは `supportTextFor()`: その日の報告書に当事者として載っていれば報告内容(【ヒヤリハット】/【事故】+何がおきた+対応)、無ければグループテンプレート。記録者はデフォルト「齊藤輝之」(`SUPPORT_RECORDER_DEFAULT`)、編集画面で変更可
+- 報告書の保存時(`saveIncident`→`applyIncidentToSupport`)に当事者利用者の記録を更新: 無ければ新規作成 / テンプレのままなら置き換え / 手書き済みなら末尾に追記。報告書の削除では記録を変更しない
+- 個別支援記録の編集画面(`screen-support`)は「その日打刻のある利用者」を表示。全文編集+追記ボタン(日時・記録者つきで末尾追記)+記録者変更、一括保存。印刷は `screen-export` の「個別支援記録」タブから利用者ごとの月間シート(A4・日付/曜日/記録内容/記録者・署名欄)
+- 作業グループは「建材組み立て」「清掃・猫飼育」の2つ(`SUPPORT_GROUPS`)。利用者に `group` を持たせ(未設定は「建材組み立て」扱い)、名簿管理で変更可。テンプレは活動テンプレート画面の下部でグループ別に設定(`SUPPORT_TMPL_KEY`)
 
 ## 動作確認方法(Playwright)
 

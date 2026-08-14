@@ -1,4 +1,4 @@
-var CACHE = "koko-cache-v9";
+var CACHE = "koko-cache-v10";
 var ASSETS = [
   "./",
   "./index.html",
