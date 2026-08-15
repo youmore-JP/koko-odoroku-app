@@ -1442,7 +1442,7 @@ function applyBulk() {
       plan.push({ key: key, date: date, p: p });
     });
   });
-  if (!plan.length) { alert("入力する対象がありません（既存スキップで対象外でした）"); return; }
+  if (!plan.length) { alert(futureCnt ? "入力する対象がありません（選択された日は未来日のため対象外でした）" : "入力する対象がありません（既存スキップで対象外でした）"); return; }
   var ym = currentYM.split("-")[0] + "年" + Number(currentYM.split("-")[1]) + "月";
   var msg = "「まとめて入力」を実行します。よろしいですか？\n\n";
   msg += ym + " の対象日 " + days.length + "日 × 対象者 " + persons.length + "人 = " + plan.length + "件\n";
@@ -2003,6 +2003,7 @@ function ensureSupportRecord(ymd, person) {
     group: userGroup(person),
     text: supportTextFor(ymd, person),
     recorder: SUPPORT_RECORDER_DEFAULT,
+    auto: true, // 自動生成フラグ: 報告書保存時の置き換え判定に使う
     updated: new Date().toISOString()
   };
   saveSupport(sup);
@@ -2030,14 +2031,10 @@ function applyIncidentToSupport(data) {
       };
       changed = true;
     } else {
-      // 自動生成の形（先頭=通所文・末尾=退所文）のままなら報告内容に置き換え、手書き・追記済みなら末尾に追記
-      var sl = (sup[key].text || "").split("\n");
-      var sFirst = sl.length ? sl[0] : "";
-      var sLast = sl.length ? sl[sl.length - 1] : "";
-      var isAutoForm = (sFirst === "送迎にて通所した。" || sFirst === "各自にて通所した。") &&
-                       (sLast === "送迎にて退所した。" || sLast === "各自にて退所した。");
-      if (!sup[key].text || isAutoForm) {
+      // 自動生成（autoフラグ付き）のままなら報告内容に置き換え、手書き・追記済み（autoフラグなし）なら末尾に追記
+      if (!sup[key].text || sup[key].auto) {
         sup[key].text = line;
+        sup[key].auto = false; // 置き換えたら自動生成ではなくなる
       } else {
         sup[key].text = sup[key].text + "\n" + line;
       }
@@ -2196,7 +2193,7 @@ function saveSupportForm() {
     if (!ta) return;
     var s = sup[key];
     if (!s) {
-      s = { date: currentSupportDay, id: person.id, group: userGroup(person), recorder: SUPPORT_RECORDER_DEFAULT, updated: new Date().toISOString() };
+      s = { date: currentSupportDay, id: person.id, group: userGroup(person), recorder: SUPPORT_RECORDER_DEFAULT, auto: false, updated: new Date().toISOString() };
       sup[key] = s;
     }
     s.text = ta.value;
@@ -2225,6 +2222,7 @@ function bulkCreateMissingSupport() {
       if (parts.length !== 2 || parts[1] !== person.id) return;
       var ymd = parts[0];
       if (ymd > today) return;
+      if (deletedSupportKeys[key]) return; // このセッション中に削除した記録は再作成しない
       if (sup[key]) return;
       var r = recs[key];
       if (r && r.in && r.out) targets.push({ ymd: ymd, person: person });
@@ -2239,7 +2237,7 @@ function bulkCreateMissingSupport() {
   targets.forEach(function(t){
     var key = t.ymd + "|" + t.person.id;
     if (sup[key]) return;
-    sup[key] = { date: t.ymd, id: t.person.id, group: userGroup(t.person), recorder: SUPPORT_RECORDER_DEFAULT, text: supportTextFor(t.ymd, t.person), updated: new Date().toISOString() };
+    sup[key] = { date: t.ymd, id: t.person.id, group: userGroup(t.person), recorder: SUPPORT_RECORDER_DEFAULT, text: supportTextFor(t.ymd, t.person), auto: true, updated: new Date().toISOString() };
     created++;
   });
   saveSupport(sup);
