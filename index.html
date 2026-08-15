@@ -487,6 +487,7 @@ table.print-table.support-table th:nth-child(4), table.print-table.support-table
       <span class="ym" id="supportDate"></span>
       <button onclick="changeSupportDay(1)">翌日 ▶</button>
     </div>
+    <button class="save-btn" onclick="bulkCreateMissingSupport()" style="margin-bottom:14px;background:#e8f0fe;color:#1a73e8">打刻済みで記録の無い日を一括作成</button>
     <div id="supportForm"></div>
   </div>
 </div>
@@ -2087,9 +2088,10 @@ function renderSupport() {
     html += '<div class="daily-sheet sup-row" data-id="' + p.id + '">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
     html += '<span style="font-size:16px;font-weight:700">' + escapeHtml(p.name) + '</span>';
-    html += '<span style="display:flex;gap:6px">' +
+    html += '<span style="display:flex;gap:6px;align-items:center">' +
       '<span style="font-size:12px;color:#1a73e8;background:#e8f0fe;border-radius:10px;padding:4px 10px">' + escapeHtml(userGroup(p)) + '</span>' +
       '<span style="font-size:12px;color:#188038;background:#e6f4ea;border-radius:10px;padding:4px 10px">支援: ' + escapeHtml(userCareGroup(p)) + '</span>' +
+      (s ? '<button class="del-btn" style="flex:0 0 auto;background:#fdecea;color:#d93025;padding:6px 14px;border-radius:8px" onclick="deleteSupportRecord(\'' + key + '\')">削除</button>' : '') +
       '</span>';
     html += '</div>';
     html += '<div class="field"><label>記録内容</label>' +
@@ -2151,6 +2153,52 @@ function saveSupportForm() {
   saveSupport(sup);
   renderSupport();
   alert(cnt + "件の個別支援記録を保存しました");
+}
+
+// 過去の「行き・帰りの打刻があり記録の無い日」を一括で個別支援記録として作成する
+function bulkCreateMissingSupport() {
+  var recs = loadRecords();
+  var sup = loadSupport();
+  var today = todayStr();
+  var targets = [];
+  loadStaff().forEach(function(person){
+    if (person.role !== "利用者") return;
+    Object.keys(recs).forEach(function(key){
+      var parts = key.split("|");
+      if (parts.length !== 2 || parts[1] !== person.id) return;
+      var ymd = parts[0];
+      if (ymd > today) return;
+      if (sup[key]) return;
+      var r = recs[key];
+      if (r && r.in && r.out) targets.push({ ymd: ymd, person: person });
+    });
+  });
+  if (!targets.length) {
+    alert("対象の日はありませんでした（行き・帰りの打刻があり、記録が未作成の日がありません）");
+    return;
+  }
+  if (!confirm(targets.length + "件の個別支援記録を作成します。よろしいですか？")) return;
+  var created = 0;
+  targets.forEach(function(t){
+    var key = t.ymd + "|" + t.person.id;
+    if (sup[key]) return;
+    sup[key] = { date: t.ymd, id: t.person.id, group: userGroup(t.person), recorder: SUPPORT_RECORDER_DEFAULT, text: supportTextFor(t.ymd, t.person), updated: new Date().toISOString() };
+    created++;
+  });
+  saveSupport(sup);
+  alert(created + "件の記録を作成しました");
+  renderSupport();
+}
+
+// 個別支援記録の削除（打刻データには触れない）
+function deleteSupportRecord(key) {
+  var sup = loadSupport();
+  if (!sup[key]) return;
+  if (supportFormDirty() && !confirm("未保存の編集内容があります。削除を続けますか？")) return;
+  if (!confirm("この日の記録を削除しますか？")) return;
+  delete sup[key];
+  saveSupport(sup);
+  renderSupport();
 }
 
 // 個別支援記録フォームに未保存の変更があるか
