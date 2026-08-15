@@ -271,6 +271,8 @@ table.print-table.support-table th:nth-child(4), table.print-table.support-table
 .bulk-day.on { background: #1a73e8; border-color: #1a73e8; color: #fff; }
 .bulk-day.on .dow { color: #c8dcf9; }
 .bulk-day.weekend.on { background: #9aa4b0; border-color: #9aa4b0; }
+.bulk-day.future { opacity: .35; pointer-events: none; }
+.bulk-day.future.on { background: #fff; border-color: #d9e0e8; color: #9aa4b0; }
 .bulk-persons { display: flex; flex-wrap: wrap; gap: 8px; }
 .bulk-person { display: flex; align-items: center; gap: 6px; border: 1px solid #d9e0e8; border-radius: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; background: #fff; }
 .bulk-person .ck { width: 18px; height: 18px; border: 2px solid #d9e0e8; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; background: #fff; flex: 0 0 auto; }
@@ -512,7 +514,7 @@ table.print-table.support-table th:nth-child(4), table.print-table.support-table
     <div id="supportTmplFields"></div>
     <button class="save-btn" onclick="saveSupportTmpl()">個別支援記録テンプレート（作業グループ別）を保存</button>
     <h3 style="margin:26px 0 6px;font-size:15px">個別支援記録テンプレート（支援グループ別）</h3>
-    <p class="notice">「自立」「支援」それぞれの定型文です（報告書がある日は、テンプレートではなく報告内容が入ります）。複数行にした場合はランダムに1つ選ばれます。</p>
+    <p class="notice">「自立」「支援」それぞれの定型文です（報告書がある日は、テンプレートではなく報告内容が入ります）。定型文は1行推奨です（複数行を書いた場合は、すべての行が記録に入ります）。</p>
     <div id="supportCareTmplFields"></div>
     <button class="save-btn" onclick="saveSupportCareTmpl()">個別支援記録テンプレート（支援グループ別）を保存</button>
   </div>
@@ -740,9 +742,24 @@ function loadStaff() {
   return list;
 }
 function saveStaff(list) { localStorage.setItem(STAFF_KEY, JSON.stringify(list)); }
+var staffBreakMigrated = false;
 function loadRecords() {
-  try { return JSON.parse(localStorage.getItem(RECORDS_KEY)) || {}; }
+  var recs = null;
+  try { recs = JSON.parse(localStorage.getItem(RECORDS_KEY)) || {}; }
   catch(e) { return {}; }
+  // 職員の休憩を「なし(0)」に移行（旧既定60分は計算に使われていなかったため）。セッション中1回だけ実行
+  if (!staffBreakMigrated) {
+    staffBreakMigrated = true;
+    var staffIds = {};
+    loadStaff().forEach(function(p){ if (p.role === "職員") staffIds[p.id] = true; });
+    var changed = false;
+    Object.keys(recs).forEach(function(key){
+      var id = key.split("|")[1];
+      if (staffIds[id] && Number(recs[key].break) === 60) { recs[key].break = 0; changed = true; }
+    });
+    if (changed) saveRecords(recs);
+  }
+  return recs;
 }
 function saveRecords(obj) { localStorage.setItem(RECORDS_KEY, JSON.stringify(obj)); }
 
@@ -766,6 +783,7 @@ function showScreen(id) {
   if (cur && cur.id === "screen-support" && id !== "screen-support" && supportFormDirty()) {
     if (!confirm("個別支援記録の入力内容はまだ保存されていません。移動すると失われます。移動しますか？")) return;
   }
+  if (cur && cur.id === "screen-support" && id !== "screen-support") deletedSupportKeys = {};
   document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("active"); });
   document.getElementById(id).classList.add("active");
   window.scrollTo(0, 0);
@@ -862,7 +880,7 @@ function saveStamp(kind) {
   var recs = loadRecords();
   var key = todayStr() + "|" + person.id;
   if (!recs[key]) {
-    recs[key] = { date: todayStr(), id: person.id, in: null, out: null, morning: 1, evening: 1, break: 60 };
+    recs[key] = { date: todayStr(), id: person.id, in: null, out: null, morning: 1, evening: 1, break: person.role === "職員" ? 0 : 60 };
   }
   // 二重打刻はできない（ボタン無効化に加えて、直接呼び出しでも拒否）
   if (kind === "in" && recs[key].in) { alert(person.name + "さんはすでに出勤打刻済みです（" + recs[key].in + "）。\n修正は管理者の「月間実績表」で行ってください。"); return; }
@@ -871,7 +889,7 @@ function saveStamp(kind) {
   if (kind === "out") recs[key].out = time;
   recs[key].morning = getOpt("morning");
   recs[key].evening = getOpt("evening");
-  if (typeof recs[key].break === "undefined" || recs[key].break === null) recs[key].break = 60;
+  if (typeof recs[key].break === "undefined" || recs[key].break === null) recs[key].break = person.role === "職員" ? 0 : 60;
   saveRecords(recs);
   // 出勤打刻した利用者にはその日の個別支援記録を自動生成（無ければ）
   if (person.role === "利用者") {
@@ -1096,7 +1114,7 @@ function buildSheet(person, ym, isPrint) {
     var breakMin = 0;
     var workH = "";
     var workErr = false;
-    if (!isStaff && r && typeof r.break !== "undefined") breakMin = Number(r.break);
+    if (r && typeof r.break !== "undefined") breakMin = Number(r.break);
     if (r && r.in && r.out) {
       var diff = timeToMin(r.out) - timeToMin(r.in) - breakMin;
       if (diff > 0) { totalMin += diff; workH = minToHM(diff); }
@@ -1106,10 +1124,8 @@ function buildSheet(person, ym, isPrint) {
     var inCell = '<td onclick="editTime(\'' + key + '\',\'in\')" style="cursor:pointer;color:#1a73e8" title="タップして編集">' + (inT || "ー") + '</td>';
     var outCell = '<td onclick="editTime(\'' + key + '\',\'out\')" style="cursor:pointer;color:#1a73e8" title="タップして編集">' + (outT || "ー") + '</td>';
     var breakCell = '<td></td>';
-    if (r && !isStaff) {
+    if (r) {
       breakCell = '<td onclick="editBreak(\'' + key + '\')" style="cursor:pointer" title="タップして編集">' + (breakMin ? minToHM(breakMin) : "なし") + '</td>';
-    } else if (!isStaff) {
-      breakCell = '<td onclick="editBreak(\'' + key + '\')" style="cursor:pointer;color:#9aa4b0" title="タップして編集">なし</td>';
     }
     // 行き・帰り送迎はタップで編集可能（レコードが無い日も新規作成される）
     var moCell = '<td onclick="editTransfer(\'' + key + '\',\'morning\')" style="cursor:pointer;color:#1a73e8" title="タップして編集">' + (r && r.morning ? "○" : "×") + '</td>';
@@ -1136,17 +1152,27 @@ function buildSheet(person, ym, isPrint) {
 function ensureRecord(recs, key) {
   if (!recs[key]) {
     var parts = key.split("|");
-    recs[key] = { date: parts[0], id: parts[1], in: null, out: null, morning: 1, evening: 1, break: 60 };
+    var person = parts.length === 2 ? staffById(parts[1]) : null;
+    recs[key] = { date: parts[0], id: parts[1], in: null, out: null, morning: 1, evening: 1, break: (person && person.role === "職員") ? 0 : 60 };
   }
   return recs[key];
 }
 
 // 打刻したけど休みに戻す＝その日の記録を丸ごと削除
 function delRecord(key) {
-  if (!confirm("この日の記録（打刻・送迎・休憩）をすべて削除しますか？\n休みに戻す場合に使います。この操作は取り消せません。")) return;
+  var sup = loadSupport();
+  var hasSup = !!sup[key];
+  var msg = hasSup
+    ? "この日の記録（打刻・送迎・休憩）と、個別支援記録をすべて削除しますか？\n休みに戻す場合に使います。この操作は取り消せません。"
+    : "この日の記録（打刻・送迎・休憩）をすべて削除しますか？\n休みに戻す場合に使います。この操作は取り消せません。";
+  if (!confirm(msg)) return;
   var recs = loadRecords();
   delete recs[key];
   saveRecords(recs);
+  if (hasSup) {
+    delete sup[key];
+    saveSupport(sup);
+  }
   renderRecords();
   renderExport();
 }
@@ -1154,7 +1180,10 @@ function delRecord(key) {
 function editBreak(key) {
   var recs = loadRecords();
   var r = ensureRecord(recs, key);
-  var cur = (typeof r.break !== "undefined") ? Number(r.break) : 60;
+  var parts = key.split("|");
+  var person = parts.length === 2 ? staffById(parts[1]) : null;
+  var defBreak = (person && person.role === "職員") ? 0 : 60;
+  var cur = (typeof r.break !== "undefined") ? Number(r.break) : defBreak;
   var input = prompt("休憩時間を分で入力（例：60 = 1時間、30 = 30分、0 = なし）\n現在：" + cur + "分", String(cur));
   if (input === null) return;
   var v = parseInt(input, 10);
@@ -1214,6 +1243,7 @@ function timeToMin(t) {
 function minToHM(min) {
   var h = Math.floor(min / 60);
   var m = min % 60;
+  if (h === 0) return m + "分";
   return h + "時間" + (m ? m + "分" : "");
 }
 function printDateStr() {
@@ -1279,7 +1309,6 @@ function bulkDaysSel(kind) {
   var todayY = today.getFullYear(), todayM = today.getMonth() + 1, todayD = today.getDate();
   for (var d = 1; d <= days; d++) {
     if (kind === "clear") { bulkState.days[d] = false; continue; }
-    if (kind === "all") { bulkState.days[d] = true; continue; }
     var dow = new Date(y, m - 1, d).getDay();
     var ok = dow !== 0 && dow !== 6;
     if (y > todayY || (y === todayY && m > todayM)) ok = false;
@@ -1290,6 +1319,14 @@ function bulkDaysSel(kind) {
   renderBulkPreview();
 }
 
+function bulkIsFuture(d) {
+  var y = Number(currentYM.split("-")[0]), m = Number(currentYM.split("-")[1]);
+  var today = new Date();
+  if (y > today.getFullYear() || (y === today.getFullYear() && m > today.getMonth() + 1)) return true;
+  if (y === today.getFullYear() && m === today.getMonth() + 1 && d > today.getDate()) return true;
+  return false;
+}
+
 function renderBulkDays() {
   var y = Number(currentYM.split("-")[0]), m = Number(currentYM.split("-")[1]);
   var days = monthDays(currentYM);
@@ -1298,13 +1335,14 @@ function renderBulkDays() {
     var dow = new Date(y, m - 1, d).getDay();
     var weekend = dow === 0 || dow === 6;
     var on = !!bulkState.days[d];
-    html += '<div class="bulk-day' + (weekend ? " weekend" : "") + (on ? " on" : "") + '" onclick="toggleBulkDay(' + d + ')">' + d + '<span class="dow">' + WEEK[dow] + '</span></div>';
+    html += '<div class="bulk-day' + (weekend ? " weekend" : "") + (on ? " on" : "") + (bulkIsFuture(d) ? " future" : "") + '" onclick="toggleBulkDay(' + d + ')">' + d + '<span class="dow">' + WEEK[dow] + '</span></div>';
   }
   document.getElementById("bulkDays").innerHTML = html;
   document.getElementById("bulkYM").textContent = currentYM.split("-")[0] + "年" + Number(currentYM.split("-")[1]) + "月";
 }
 
 function toggleBulkDay(d) {
+  if (bulkIsFuture(d)) return;
   bulkState.days[d] = !bulkState.days[d];
   renderBulkDays();
   renderBulkPreview();
@@ -1390,21 +1428,25 @@ function applyBulk() {
   var morningOn = !!getBulkOpt("morning"), eveningOn = !!getBulkOpt("evening");
   var recs = loadRecords();
   var plan = [];
-  var newCnt = 0, overwriteCnt = 0, skipCnt = 0;
+  var newCnt = 0, overwriteCnt = 0, skipCnt = 0, futureCnt = 0;
+  var today = todayStr();
   persons.forEach(function(p) {
     days.forEach(function(d) {
       var key = currentYM + "-" + pad(d) + "|" + p.id;
+      var date = currentYM + "-" + pad(d);
+      if (date > today) { futureCnt++; return; }
       var exist = recs[key] || null;
       var hasData = !!(exist && (exist.in || exist.out));
       if (bulkMode === "skip" && hasData) { skipCnt++; return; }
       if (hasData) overwriteCnt++; else newCnt++;
-      plan.push({ key: key, date: currentYM + "-" + pad(d), p: p });
+      plan.push({ key: key, date: date, p: p });
     });
   });
   if (!plan.length) { alert("入力する対象がありません（既存スキップで対象外でした）"); return; }
   var ym = currentYM.split("-")[0] + "年" + Number(currentYM.split("-")[1]) + "月";
   var msg = "「まとめて入力」を実行します。よろしいですか？\n\n";
   msg += ym + " の対象日 " + days.length + "日 × 対象者 " + persons.length + "人 = " + plan.length + "件\n";
+  if (futureCnt) msg += "（未来日 " + futureCnt + "件は対象外にしました）\n";
   msg += "出勤 " + (inV || "未入力") + " / 退勤 " + (outV || "未入力") + "\n";
   msg += "休憩 利用者" + bU + "分・職員" + bS + "分\n";
   msg += "送迎（利用者） 行き" + (morningOn ? "あり" : "なし") + "・帰り" + (eveningOn ? "あり" : "なし") + "（職員は「なし」で記録）\n\n";
@@ -1779,9 +1821,11 @@ function loadSupportTmpl() {
     if (t && t.groups && t.groups.length) {
       // 旧グループ「建材組み立て」→「組立」へリネーム。テンプレが旧デフォルトのままなら新デフォルトに差し替え
       var OLD_TMPL = "軽作業（建材組立等）に取り組んだ。\n建材の組み立て作業を丁寧に進めた。\n組立作業に集中して取り組めた。";
+      var changed = false;
       t.groups.forEach(function(g){
         if (g.name === "建材組み立て") {
           g.name = "組立";
+          changed = true;
           if (!g.template || g.template === OLD_TMPL) {
             SUPPORT_GROUPS.forEach(function(dg){ if (dg.name === "組立") g.template = dg.template; });
           }
@@ -1789,8 +1833,9 @@ function loadSupportTmpl() {
       });
       var names = t.groups.map(function(g){ return g.name; });
       SUPPORT_GROUPS.forEach(function(dg){
-        if (names.indexOf(dg.name) < 0) t.groups.push({ name: dg.name, template: dg.template });
+        if (names.indexOf(dg.name) < 0) { t.groups.push({ name: dg.name, template: dg.template }); changed = true; }
       });
+      if (changed) saveSupportTmplData(t); // 移行結果を1回保存して毎回の処理を省略
       return t;
     }
   } catch(e) {}
@@ -1802,10 +1847,12 @@ function loadSupportCareTmpl() {
   try {
     var t = JSON.parse(localStorage.getItem(SUPPORT_CARE_TMPL_KEY));
     if (t && t.groups && t.groups.length) {
+      var changed = false;
       var names = t.groups.map(function(g){ return g.name; });
       SUPPORT_CARE_GROUPS.forEach(function(dg){
-        if (names.indexOf(dg.name) < 0) t.groups.push({ name: dg.name, template: dg.template });
+        if (names.indexOf(dg.name) < 0) { t.groups.push({ name: dg.name, template: dg.template }); changed = true; }
       });
+      if (changed) saveSupportCareTmplData(t); // 移行結果を1回保存して毎回の処理を省略
       return t;
     }
   } catch(e) {}
@@ -1871,7 +1918,7 @@ function incidentLinesFor(ymd, userName) {
 // 作業時間行: 打刻がそろっていれば「作業時間はX時間Y分でした。」、揃っていなければ「作業に参加できていた。」
 function workTimeLineFor(r) {
   if (r && r.in && r.out) {
-    var breakMin = (r.role !== "職員" && typeof r.break !== "undefined") ? Number(r.break) : 0;
+    var breakMin = (typeof r.break !== "undefined") ? Number(r.break) : 0;
     var diff = timeToMin(r.out) - timeToMin(r.in) - breakMin;
     if (diff > 0) return "作業時間は" + minToHM(diff) + "でした。";
   }
@@ -1983,8 +2030,13 @@ function applyIncidentToSupport(data) {
       };
       changed = true;
     } else {
-      var tpl = groupTemplate(userGroup(person));
-      if (!sup[key].text || sup[key].text === tpl) {
+      // 自動生成の形（先頭=通所文・末尾=退所文）のままなら報告内容に置き換え、手書き・追記済みなら末尾に追記
+      var sl = (sup[key].text || "").split("\n");
+      var sFirst = sl.length ? sl[0] : "";
+      var sLast = sl.length ? sl[sl.length - 1] : "";
+      var isAutoForm = (sFirst === "送迎にて通所した。" || sFirst === "各自にて通所した。") &&
+                       (sLast === "送迎にて退所した。" || sLast === "各自にて退所した。");
+      if (!sup[key].text || isAutoForm) {
         sup[key].text = line;
       } else {
         sup[key].text = sup[key].text + "\n" + line;
@@ -2008,6 +2060,7 @@ function supportDayLabel(ymd) {
 
 function changeSupportDay(delta) {
   if (supportFormDirty() && !confirm("個別支援記録の入力内容はまだ保存されていません。移動すると失われます。移動しますか？")) return;
+  deletedSupportKeys = {};
   var p = currentSupportDay.split("-");
   var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]) + delta);
   currentSupportDay = d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
@@ -2040,7 +2093,7 @@ function renderSupportCareTmplFields() {
   var html = "";
   t.groups.forEach(function(g, i){
     html += '<div class="field"><label>' + escapeHtml(g.name) + '</label>' +
-      '<textarea id="careTmpl' + i + '" rows="2" placeholder="このグループの利用者の個別支援記録に自動で入る定型文（1行に1バリエーション。複数行にした場合はランダム選択）" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px;line-height:1.7;box-sizing:border-box;font-family:inherit">' + escapeHtml(g.template) + '</textarea></div>';
+      '<textarea id="careTmpl' + i + '" rows="2" placeholder="このグループの利用者の個別支援記録に自動で入る定型文（複数行を書いた場合はすべての行が記録に入ります）" style="width:100%;padding:12px;border:1px solid #d9e0e8;border-radius:8px;font-size:15px;line-height:1.7;box-sizing:border-box;font-family:inherit">' + escapeHtml(g.template) + '</textarea></div>';
   });
   var el = document.getElementById("supportCareTmplFields");
   if (el) el.innerHTML = html;
@@ -2058,6 +2111,8 @@ function saveSupportCareTmpl() {
 
 // 未保存の日は「その日に入る予定の文章」をプレビュー表示（ランダム選択も1度きりで固定）
 var supportPreview = {};
+// 削除した記録のキー（そのセッション中、画面に再表示しない）。日付移動や画面離脱で解除される
+var deletedSupportKeys = {};
 function supportRowBaseText(p, s) {
   return s ? s.text : supportTextFor(currentSupportDay, p);
 }
@@ -2072,8 +2127,10 @@ function renderSupport() {
   dl += '</datalist>';
   var users = list.filter(function(p){ return p.role === "利用者"; });
   var rows = users.filter(function(p){
-    var r = recs[currentSupportDay + "|" + p.id];
-    var s = sup[currentSupportDay + "|" + p.id];
+    var key = currentSupportDay + "|" + p.id;
+    if (deletedSupportKeys[key]) return false;
+    var r = recs[key];
+    var s = sup[key];
     return (r && (r.in || r.out)) || s;
   });
   supportPreview = {};
@@ -2190,14 +2247,15 @@ function bulkCreateMissingSupport() {
   renderSupport();
 }
 
-// 個別支援記録の削除（打刻データには触れない）
+// 個別支援記録の削除（打刻データには触れない。削除した行はセッション中は非表示になり、日付移動で再表示される）
 function deleteSupportRecord(key) {
   var sup = loadSupport();
   if (!sup[key]) return;
   if (supportFormDirty() && !confirm("未保存の編集内容があります。削除を続けますか？")) return;
-  if (!confirm("この日の記録を削除しますか？")) return;
+  if (!confirm("この日の記録を削除しますか？\n（この行は表示から消えます。打刻データには触れません）")) return;
   delete sup[key];
   saveSupport(sup);
+  deletedSupportKeys[key] = true;
   renderSupport();
 }
 
@@ -2591,7 +2649,7 @@ function exportBackup() {
 function importBackup() {
   var fileEl = document.getElementById("backupFile");
   if (!fileEl.files || !fileEl.files[0]) { alert("バックアップファイルを選択してください"); return; }
-  if (!confirm("取り込むと、この端末の現在のデータはすべて上書きされます。よろしいですか？")) return;
+  if (!confirm("取り込むと、この端末の現在のデータはすべて削除され、バックアップファイルの内容で復元されます。よろしいですか？")) return;
   var reader = new FileReader();
   reader.onload = function() {
     try {
@@ -2599,6 +2657,7 @@ function importBackup() {
       if (data.app !== BACKUP_MAGIC) { alert("このアプリのバックアップファイルではありません"); return; }
       BACKUP_KEYS.forEach(function(k) {
         if (typeof data[k] === "string") localStorage.setItem(k, data[k]);
+        else localStorage.removeItem(k);
       });
       alert("バックアップを取り込みました");
       showScreen("screen-main");
