@@ -867,7 +867,7 @@ function saveStamp(kind) {
   if (person.role === "利用者") {
     if (kind === "in") ensureSupportRecord(todayStr(), person);
     // 送迎文を最新の打刻値に追従（退勤打刻で帰り送迎が確定するため）
-    refreshSupportTransfer(todayStr(), person);
+    refreshSupportAuto(todayStr(), person);
   }
   closeModal();
   renderNameList();
@@ -1422,7 +1422,7 @@ function applyBulk() {
     if (item.p.role !== "利用者") return;
     if (inV || outV) ensureSupportRecord(item.date, item.p);
     // 送迎文を一括設定の値に追従（上書きで送迎が変わった日も含む）
-    refreshSupportTransfer(item.date, item.p);
+    refreshSupportAuto(item.date, item.p);
   });
   renderRecords();
   renderExport();
@@ -1848,6 +1848,16 @@ function incidentLinesFor(ymd, userName) {
   return out;
 }
 
+// 作業時間行: 打刻がそろっていれば「作業時間はX時間Y分でした。」、揃っていなければ「作業に参加できていた。」
+function workTimeLineFor(r) {
+  if (r && r.in && r.out) {
+    var breakMin = (r.role !== "職員" && typeof r.break !== "undefined") ? Number(r.break) : 0;
+    var diff = timeToMin(r.out) - timeToMin(r.in) - breakMin;
+    if (diff > 0) return "作業時間は" + minToHM(diff) + "でした。";
+  }
+  return "作業に参加できていた。";
+}
+
 // 記録テキストの決定: 報告書があればその内容、なければ定型文を組み合わせて生成
 function supportTextFor(ymd, person) {
   var incLines = [];
@@ -1862,13 +1872,14 @@ function supportTextFor(ymd, person) {
   if (w) lines.push(w);
   var c = careTemplate(userCareGroup(person));
   if (c) lines.push(c);
-  lines.push("作業に参加できていた。");
+  lines.push(workTimeLineFor(r));
   lines.push(r.evening ? "送迎にて退所した。" : "各自にて退所した。");
   return lines.join("\n");
 }
 
-// 送迎文の自動追従: 記録が自動生成のまま（先頭=通所文・末尾=退所文）なら、最新の送迎値に差し替える
-function refreshSupportTransfer(ymd, person) {
+// 自動生成行の追従: 記録が自動生成の形（先頭=通所文・作業時間行・末尾=退所文）のままなら、
+// 最新の打刻値（送迎・勤務時間）に差し替える。職員が編集した行には触らない
+function refreshSupportAuto(ymd, person) {
   if (!person || person.role !== "利用者") return;
   var sup = loadSupport();
   var key = ymd + "|" + person.id;
@@ -1881,6 +1892,18 @@ function refreshSupportTransfer(ymd, person) {
   if (lines.length && (lines[0] === "送迎にて通所した。" || lines[0] === "各自にて通所した。")) {
     lines[0] = r.morning ? "送迎にて通所した。" : "各自にて通所した。";
     changed = true;
+  }
+  // 作業時間行（自動生成された形のときだけ差し替え）
+  var workLine = /^作業時間は(?:\d+時間(?:\d+分)?|\d+分)でした。$/;
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i] === "作業に参加できていた。" || workLine.test(lines[i])) {
+      var next = workTimeLineFor(r);
+      if (lines[i] !== next) {
+        lines[i] = next;
+        changed = true;
+      }
+      break;
+    }
   }
   var last = lines.length ? lines[lines.length - 1] : "";
   if (last === "送迎にて退所した。" || last === "各自にて退所した。") {
@@ -1898,7 +1921,7 @@ function refreshSupportTransfer(ymd, person) {
 function refreshSupportAfterRecordEdit(key) {
   var parts = key.split("|");
   if (parts.length !== 2) return;
-  refreshSupportTransfer(parts[0], staffById(parts[1]));
+  refreshSupportAuto(parts[0], staffById(parts[1]));
 }
 
 // 記録が無ければ自動生成（出勤打刻・まとめて入力・報告書保存時から呼ばれる）
