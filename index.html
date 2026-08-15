@@ -707,7 +707,7 @@ var SUPPORT_GROUPS = [
   { name: "組立", template: "組立作業に集中して取り組めた。\n軽作業に集中して取り組めた。（ネジの組立）" },
   { name: "検品", template: "軽作業に集中して取り組めた。（ネジの検品）\n検品作業に集中して取り組めた。" },
   { name: "袋詰め", template: "軽作業に集中して取り組めた。（ネジの袋詰め）\n袋詰め作業に集中して取り組めた。" },
-  { name: "清掃・猫飼育", template: "清掃と猫の飼育（餌やり・掃除等）に取り組んだ。\n館内の清掃や猫の世話を行った。\n清掃作業と猫のお世話を担当した。" }
+  { name: "清掃・猫飼育", template: "清掃と猫の飼育（餌やり・掃除等）に取り組んだ。\n館内や用品の清掃や猫の飼育を行った。\n清掃作業と猫の飼育を担当した。" }
 ];
 // 支援グループのテンプレート: 定型文1種（ランダムなし）
 var SUPPORT_CARE_GROUPS = [
@@ -1887,7 +1887,7 @@ function supportTextFor(ymd, person) {
   var r = recs[ymd + "|" + person.id] || {};
   var lines = [];
   lines.push(r.morning ? "送迎にて通所した。" : "各自にて通所した。");
-  lines.push("体調良好。");
+  lines.push(randomVariant("体調不良なく、作業できていた。\n体調も良好で、元気に取り組めた。\n体調良好で、落ち着いて過ごせた。"));
   var w = randomVariant(groupTemplate(userGroup(person)));
   if (w) lines.push(w);
   var c = careTemplate(userCareGroup(person));
