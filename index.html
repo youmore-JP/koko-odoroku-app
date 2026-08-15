@@ -701,8 +701,11 @@ var SUPPORT_TMPL_KEY = "koko_support_tmpl";
 var SUPPORT_CARE_TMPL_KEY = "koko_support_care_tmpl";
 var SUPPORT_RECORDER_DEFAULT = "齊藤輝之";
 // 作業グループのテンプレート: 1行に1バリエーション。記録生成時に毎日ランダムに1つ選ばれる
+// 軽作業の枠組みは「組立」「検品」「袋詰め」の3つに分かれる（ネジ関連の作業）
 var SUPPORT_GROUPS = [
-  { name: "建材組み立て", template: "軽作業（建材組立等）に取り組んだ。\n建材の組み立て作業を丁寧に進めた。\n組立作業に集中して取り組めた。" },
+  { name: "組立", template: "組立作業に集中して取り組めた。\n軽作業に集中して取り組めた。（ネジの組立）" },
+  { name: "検品", template: "軽作業に集中して取り組めた。（ネジの検品）\n検品作業に集中して取り組めた。" },
+  { name: "袋詰め", template: "軽作業に集中して取り組めた。（ネジの袋詰め）\n袋詰め作業に集中して取り組めた。" },
   { name: "清掃・猫飼育", template: "清掃と猫の飼育（餌やり・掃除等）に取り組んだ。\n館内の清掃や猫の世話を行った。\n清掃作業と猫のお世話を担当した。" }
 ];
 // 支援グループのテンプレート: 定型文1種（ランダムなし）
@@ -726,8 +729,14 @@ function loadDaily() {
 function saveDaily(obj) { localStorage.setItem(DAILY_KEY, JSON.stringify(obj)); }
 
 function loadStaff() {
-  try { return JSON.parse(localStorage.getItem(STAFF_KEY)) || []; }
+  var list = [];
+  try { list = JSON.parse(localStorage.getItem(STAFF_KEY)) || []; }
   catch(e) { return []; }
+  // 旧作業グループ「建材組み立て」→「組立」へ自動移行（変更時のみ1回保存）
+  var changed = false;
+  list.forEach(function(p){ if (p && p.group === "建材組み立て") { p.group = "組立"; changed = true; } });
+  if (changed) saveStaff(list);
+  return list;
 }
 function saveStaff(list) { localStorage.setItem(STAFF_KEY, JSON.stringify(list)); }
 function loadRecords() {
@@ -1767,9 +1776,19 @@ function loadSupportTmpl() {
   try {
     var t = JSON.parse(localStorage.getItem(SUPPORT_TMPL_KEY));
     if (t && t.groups && t.groups.length) {
+      // 旧グループ「建材組み立て」→「組立」へリネーム。テンプレが旧デフォルトのままなら新デフォルトに差し替え
+      var OLD_TMPL = "軽作業（建材組立等）に取り組んだ。\n建材の組み立て作業を丁寧に進めた。\n組立作業に集中して取り組めた。";
+      t.groups.forEach(function(g){
+        if (g.name === "建材組み立て") {
+          g.name = "組立";
+          if (!g.template || g.template === OLD_TMPL) {
+            SUPPORT_GROUPS.forEach(function(dg){ if (dg.name === "組立") g.template = dg.template; });
+          }
+        }
+      });
       var names = t.groups.map(function(g){ return g.name; });
       SUPPORT_GROUPS.forEach(function(dg){
-        if (names.indexOf(dg.name) < 0) t.groups.push({ name: dg.name, template: "" });
+        if (names.indexOf(dg.name) < 0) t.groups.push({ name: dg.name, template: dg.template });
       });
       return t;
     }
