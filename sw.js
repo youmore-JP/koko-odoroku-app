@@ -38,7 +38,9 @@ self.addEventListener("fetch", function(e) {
         }
         return res;
       }).catch(function() {
-        return hit; // オフライン・サーバー停止時はキャッシュを返す
+        // オフライン・サーバー停止時はキャッシュを返す。キャッシュも無ければ明示的なエラーレスポンス
+        if (hit) return hit;
+        return new Response("", { status: 503, statusText: "offline" });
       });
       return hit || fetchPromise;
     })

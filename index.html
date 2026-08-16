@@ -693,7 +693,27 @@ table.print-table.support-table th:nth-child(4), table.print-table.support-table
 
 <script>
 // ============ データ ============
-var PASSWORDS = ["5560", "0556", "556"];
+// 管理者パスワードは SHA-256 ハッシュのみ保持（平文をソースに置かない）。
+// 認証は HTTPS 環境の crypto.subtle でハッシュ比較する。
+var PASSWORDS_SHA256 = [
+  "26adad3a50f1cbe2117eef089088a79f057463f17206ed6914af4914f1e3c267", // 5560
+  "c5f011b4b1fce43e38aa776d1430cab5067085a85e155f2fa678f03e78eae7ef", // 0556
+  "9d6aa3d89c0171b9c2ccd57e6d41ccec3053d3c3f118386e7f10b89ebaa7b8e4"  // 556
+];
+var PW_FAILS = 0;
+var PW_LOCK_UNTIL = 0;
+var PW_MAX_FAILS = 5;
+var PW_LOCK_MS = 30000;
+
+function sha256Hex(str) {
+  var bytes = new TextEncoder().encode(str);
+  return crypto.subtle.digest("SHA-256", bytes).then(function(buf) {
+    var arr = new Uint8Array(buf);
+    var out = "";
+    for (var i = 0; i < arr.length; i++) out += ("0" + arr[i].toString(16)).slice(-2);
+    return out;
+  });
+}
 var STAFF_KEY = "koko_staff";
 var RECORDS_KEY = "koko_records";
 var DAILY_KEY = "koko_daily";
@@ -717,6 +737,17 @@ var SUPPORT_CARE_GROUPS = [
   { name: "支援", template: "個別に作業手順を説明し、一緒に作業するなど丁寧な支援を行った。" }
 ];
 
+// localStorage 保存の共通化。容量超過などで失敗したら明示する（静かに消えないようにする）
+function saveLS(key, val) {
+  try {
+    localStorage.setItem(key, val);
+    return true;
+  } catch(e) {
+    alert("保存に失敗しました。端末の保存容量を確認し、バックアップを取ってください。");
+    return false;
+  }
+}
+
 function loadTemplate() {
   try {
     var t = JSON.parse(localStorage.getItem(TEMPLATE_KEY));
@@ -724,12 +755,12 @@ function loadTemplate() {
   } catch(e) {}
   return { morning: "", afternoon: "" };
 }
-function saveTemplateData(obj) { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(obj)); }
+function saveTemplateData(obj) { saveLS(TEMPLATE_KEY, JSON.stringify(obj)); }
 function loadDaily() {
   try { return JSON.parse(localStorage.getItem(DAILY_KEY)) || {}; }
   catch(e) { return {}; }
 }
-function saveDaily(obj) { localStorage.setItem(DAILY_KEY, JSON.stringify(obj)); }
+function saveDaily(obj) { saveLS(DAILY_KEY, JSON.stringify(obj)); }
 
 function loadStaff() {
   var list = [];
@@ -741,7 +772,7 @@ function loadStaff() {
   if (changed) saveStaff(list);
   return list;
 }
-function saveStaff(list) { localStorage.setItem(STAFF_KEY, JSON.stringify(list)); }
+function saveStaff(list) { saveLS(STAFF_KEY, JSON.stringify(list)); }
 var staffBreakMigrated = false;
 function loadRecords() {
   var recs = null;
@@ -761,7 +792,7 @@ function loadRecords() {
   }
   return recs;
 }
-function saveRecords(obj) { localStorage.setItem(RECORDS_KEY, JSON.stringify(obj)); }
+function saveRecords(obj) { saveLS(RECORDS_KEY, JSON.stringify(obj)); }
 
 var WEEK = ["日","月","火","水","木","金","土"];
 
@@ -803,9 +834,11 @@ function renderNameList() {
   document.getElementById("todayLine").textContent =
     "今日：" + t.getFullYear() + "年" + (t.getMonth()+1) + "月" + t.getDate() + "日（" + WEEK[t.getDay()] + "） 名前をタップして打刻してください";
   var list = loadStaff().filter(function(p){ return !p.retired; });
+  var recs = loadRecords();
+  var keyPrefix = todayStr() + "|";
   var html = "";
   list.forEach(function(p) {
-    var rec = getTodayRecord(p.id);
+    var rec = recs[keyPrefix + p.id] || null;
     var status = "";
     if (rec && rec.in) status = "出勤 " + rec.in;
     if (rec && rec.out) status += " ／ 退勤 " + rec.out;
@@ -899,7 +932,7 @@ function saveStamp(kind) {
   }
   closeModal();
   renderNameList();
-  var label = kind === "in" ? "出勤" : kind === "out" ? "退勤" : "送迎";
+  var label = kind === "in" ? "出勤" : "退勤";
   alert(label + "を記録しました：" + person.name + " " + time);
 }
 
@@ -1003,9 +1036,40 @@ function setUserNote(id, val) {
 // ============ 管理者 ============
 function showManageEntry() { showScreen("screen-manage-entry"); document.getElementById("managePw").value=""; document.getElementById("managePwErr").textContent=""; }
 function checkManagePw() {
-  var v = document.getElementById("managePw").value;
-  if (PASSWORDS.indexOf(v) >= 0) { showScreen("screen-manage-menu"); }
-  else { document.getElementById("managePwErr").textContent = "パスワードが違います"; }
+  var input = document.getElementById("managePw");
+  var err = document.getElementById("managePwErr");
+  var v = input.value;
+  if (!v) { err.textContent = "パスワードを入力してください"; return; }
+  var now = Date.now();
+  if (now < PW_LOCK_UNTIL) {
+    var sec = Math.ceil((PW_LOCK_UNTIL - now) / 1000);
+    err.textContent = "試行回数が多すぎます。" + sec + "秒後にお試しください";
+    return;
+  }
+  if (typeof crypto === "undefined" || !crypto.subtle || typeof TextEncoder === "undefined") {
+    err.textContent = "この環境では認証できません（HTTPSで開いてください）";
+    return;
+  }
+  sha256Hex(v).then(function(hash) {
+    if (PASSWORDS_SHA256.indexOf(hash) >= 0) {
+      PW_FAILS = 0;
+      PW_LOCK_UNTIL = 0;
+      input.value = "";
+      err.textContent = "";
+      showScreen("screen-manage-menu");
+    } else {
+      PW_FAILS++;
+      if (PW_FAILS >= PW_MAX_FAILS) {
+        PW_FAILS = 0;
+        PW_LOCK_UNTIL = Date.now() + PW_LOCK_MS;
+        err.textContent = "試行回数が多すぎます。30秒間お待ちください";
+      } else {
+        err.textContent = "パスワードが違います";
+      }
+    }
+  }).catch(function() {
+    err.textContent = "この環境では認証できません（HTTPSで開いてください）";
+  });
 }
 
 // ============ 名簿管理 ============
@@ -1069,21 +1133,20 @@ function currentYMKey() {
   var d = new Date();
   return d.getFullYear() + "-" + pad(d.getMonth()+1);
 }
-function changeMonth(delta) {
+function shiftYM(delta) {
   var parts = currentYM.split("-");
   var y = Number(parts[0]), m = Number(parts[1]) + delta;
   if (m < 1) { m = 12; y--; }
   if (m > 12) { m = 1; y++; }
   currentYM = y + "-" + pad(m);
+}
+function changeMonth(delta) {
+  shiftYM(delta);
   if (bulkOpen) bulkInitDays();
   renderRecords();
 }
 function changeMonthExport(delta) {
-  var parts = currentYM.split("-");
-  var y = Number(parts[0]), m = Number(parts[1]) + delta;
-  if (m < 1) { m = 12; y--; }
-  if (m > 12) { m = 1; y++; }
-  currentYM = y + "-" + pad(m);
+  shiftYM(delta);
   renderExport();
 }
 
@@ -1503,24 +1566,16 @@ function renderExport() {
   document.getElementById("exportList").innerHTML = html;
 }
 function doPrint() {
+  var html = "";
   if (exportType === "daily") {
-    var html = buildDailySheetsForMonth(currentYM);
-    document.getElementById("print-daily-container").innerHTML = html;
-    window.print();
-    document.getElementById("print-daily-container").innerHTML = "";
+    html = buildDailySheetsForMonth(currentYM);
   } else if (exportType === "support") {
-    var html = buildSupportSheetsForMonth(currentYM);
-    document.getElementById("print-daily-container").innerHTML = html;
-    window.print();
-    document.getElementById("print-daily-container").innerHTML = "";
+    html = buildSupportSheetsForMonth(currentYM);
   } else {
     var list = loadStaff();
-    var html = "";
     list.forEach(function(p) { html += buildSheet(p, currentYM, true); });
-    document.getElementById("print-daily-container").innerHTML = html;
-    window.print();
-    document.getElementById("print-daily-container").innerHTML = "";
   }
+  printContainer(html);
 }
 
 function buildDailySheetsForMonth(ym) {
@@ -1644,6 +1699,20 @@ function buildSupportSheet(person, ym) {
 // ============ 表示ヘルパー ============
 function escapeHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// 印刷コンテナに内容を入れて印刷し、afterprint で後始末する（即時クリアによる白紙印刷を防ぐ）
+function printContainer(html) {
+  var el = document.getElementById("print-daily-container");
+  el.innerHTML = html;
+  var cleanup = function() {
+    el.innerHTML = "";
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  // afterprint が発火しない環境向けのフォールバック（遅延クリア）
+  setTimeout(cleanup, 3000);
 }
 
 // ============ 業務日誌 ============
@@ -1803,9 +1872,7 @@ function printDaily() {
     saveDaily(daily);
   }
   var html = buildDailySheet(currentDaily);
-  document.getElementById("print-daily-container").innerHTML = html;
-  window.print();
-  document.getElementById("print-daily-container").innerHTML = "";
+  printContainer(html);
 }
 
 // ============ 個別支援記録（データ層） ============
@@ -1813,7 +1880,7 @@ function loadSupport() {
   try { return JSON.parse(localStorage.getItem(SUPPORT_KEY)) || {}; }
   catch(e) { return {}; }
 }
-function saveSupport(obj) { localStorage.setItem(SUPPORT_KEY, JSON.stringify(obj)); }
+function saveSupport(obj) { saveLS(SUPPORT_KEY, JSON.stringify(obj)); }
 
 function loadSupportTmpl() {
   try {
@@ -1841,7 +1908,7 @@ function loadSupportTmpl() {
   } catch(e) {}
   return { groups: SUPPORT_GROUPS.map(function(g){ return { name: g.name, template: g.template }; }) };
 }
-function saveSupportTmplData(obj) { localStorage.setItem(SUPPORT_TMPL_KEY, JSON.stringify(obj)); }
+function saveSupportTmplData(obj) { saveLS(SUPPORT_TMPL_KEY, JSON.stringify(obj)); }
 
 function loadSupportCareTmpl() {
   try {
@@ -1858,7 +1925,7 @@ function loadSupportCareTmpl() {
   } catch(e) {}
   return { groups: SUPPORT_CARE_GROUPS.map(function(g){ return { name: g.name, template: g.template }; }) };
 }
-function saveSupportCareTmplData(obj) { localStorage.setItem(SUPPORT_CARE_TMPL_KEY, JSON.stringify(obj)); }
+function saveSupportCareTmplData(obj) { saveLS(SUPPORT_CARE_TMPL_KEY, JSON.stringify(obj)); }
 
 function groupTemplate(name) {
   var t = loadSupportTmpl();
@@ -1895,6 +1962,18 @@ function staffById(id) {
   return found;
 }
 
+// 報告書1件分の記録行を作る（個別支援記録へ反映する本文の1行）
+function incidentLine(x) {
+  var label = x.type === "アクシデント" ? "事故" : "ヒヤリハット";
+  var cats = (x.cats && x.cats.length) ? x.cats.join("・") : "";
+  var line = "【" + label + "】" + (cats ? cats + "：" : "") + (x.content || "");
+  var respParts = [];
+  if (x.responseSel && x.responseSel.length) respParts = respParts.concat(x.responseSel);
+  if (x.responseNote) respParts.push(x.responseNote);
+  if (respParts.length) line += "（対応：" + respParts.join("・") + "）";
+  return line;
+}
+
 // その日に「その利用者が当事者」の報告書の行を返す（複数時は改行連結）
 function incidentLinesFor(ymd, userName) {
   var out = [];
@@ -1903,14 +1982,7 @@ function incidentLinesFor(ymd, userName) {
     var users = (x.users && x.users.length) ? x.users : (x.userName ? [x.userName] : []);
     return users.indexOf(userName) >= 0;
   }).forEach(function(x){
-    var label = x.type === "アクシデント" ? "事故" : "ヒヤリハット";
-    var cats = (x.cats && x.cats.length) ? x.cats.join("・") : "";
-    var line = "【" + label + "】" + (cats ? cats + "：" : "") + (x.content || "");
-    var respParts = [];
-    if (x.responseSel && x.responseSel.length) respParts = respParts.concat(x.responseSel);
-    if (x.responseNote) respParts.push(x.responseNote);
-    if (respParts.length) line += "（対応：" + respParts.join("・") + "）";
-    out.push(line);
+    out.push(incidentLine(x));
   });
   return out;
 }
@@ -2009,10 +2081,13 @@ function ensureSupportRecord(ymd, person) {
   saveSupport(sup);
 }
 
-// 報告書保存時に当事者利用者の記録へ反映（無ければ新規 / テンプレのままなら置き換え / 手書き済みなら追記）
+// 報告書保存時に当事者利用者の記録へ反映（無ければ新規 / テンプレのままなら置き換え / 手書き済みなら追記）。
+// 反映済みの報告書IDを incidentIds に記録し、保存・編集を繰り返しても同じ内容を重複追記しない。
 function applyIncidentToSupport(data) {
   var ymd = data.date;
   if (!ymd) return;
+  var line = incidentLine(data);
+  if (!line) return;
   var users = (data.users && data.users.length) ? data.users : (data.userName ? [data.userName] : []);
   var sup = loadSupport();
   var changed = false;
@@ -2020,28 +2095,39 @@ function applyIncidentToSupport(data) {
     var person = null;
     loadStaff().forEach(function(p){ if (p.name === name) person = p; });
     if (!person || person.role !== "利用者") return;
-    var line = incidentLinesFor(ymd, name).join("\n");
-    if (!line) return;
     var key = ymd + "|" + person.id;
+    var appliedIds = (sup[key] && sup[key].incidentIds) ? sup[key].incidentIds.slice() : [];
     if (!sup[key]) {
       sup[key] = {
         date: ymd, id: person.id, group: userGroup(person),
         text: line, recorder: SUPPORT_RECORDER_DEFAULT,
+        incidentIds: [data.id],
         updated: new Date().toISOString()
       };
       changed = true;
-    } else {
-      // 自動生成（autoフラグ付き）のままなら報告内容に置き換え、手書き・追記済み（autoフラグなし）なら末尾に追記
-      if (!sup[key].text || sup[key].auto) {
+      return;
+    }
+    if (appliedIds.indexOf(data.id) >= 0) {
+      // 既に反映済みの報告書：自動生成のまま（auto）なら最新内容に差し替え、手書き済みなら追記しない
+      if (sup[key].auto) {
         sup[key].text = line;
-        sup[key].auto = false; // 置き換えたら自動生成ではなくなる
-      } else {
-        sup[key].text = sup[key].text + "\n" + line;
+        sup[key].auto = false;
+        changed = true;
       }
-      sup[key].group = userGroup(person);
-      sup[key].updated = new Date().toISOString();
+    } else if (!sup[key].text || sup[key].auto) {
+      sup[key].text = line;
+      sup[key].auto = false; // 置き換えたら自動生成ではなくなる
+      appliedIds.push(data.id);
+      sup[key].incidentIds = appliedIds;
+      changed = true;
+    } else {
+      sup[key].text = sup[key].text + "\n" + line;
+      appliedIds.push(data.id);
+      sup[key].incidentIds = appliedIds;
       changed = true;
     }
+    sup[key].group = userGroup(person);
+    sup[key].updated = new Date().toISOString();
   });
   if (changed) saveSupport(sup);
 }
@@ -2284,7 +2370,7 @@ function loadIncidents() {
   try { return JSON.parse(localStorage.getItem(INCIDENT_KEY)) || []; }
   catch(e) { return []; }
 }
-function saveIncidents(list) { localStorage.setItem(INCIDENT_KEY, JSON.stringify(list)); }
+function saveIncidents(list) { saveLS(INCIDENT_KEY, JSON.stringify(list)); }
 
 var currentIncidentId = null;
 var incidentFormFrom = "main";
@@ -2534,6 +2620,7 @@ function collectIncident() {
 
 function saveIncident(andPrint) {
   var data = collectIncident();
+  if (!data.date) { alert("発生日を入力してください"); return; }
   if (data.date > todayStr()) { alert("発生日が未来の日付になっています。日付を確認してください。"); return; }
   var list = loadIncidents();
   if (currentIncidentId) {
@@ -2545,6 +2632,7 @@ function saveIncident(andPrint) {
   }
   saveIncidents(list);
   currentIncidentId = currentIncidentId || data.id;
+  data.id = currentIncidentId; // 編集時も id を保持して applyIncidentToSupport の重複判定に使う
   incidentBaseline = collectIncident();
   // 当事者（利用者）の個別支援記録へ報告内容を反映
   applyIncidentToSupport(data);
@@ -2601,9 +2689,7 @@ function printIncident(id) {
   html += '</div>';
   html += '</div>';
 
-  document.getElementById("print-daily-container").innerHTML = html;
-  window.print();
-  document.getElementById("print-daily-container").innerHTML = "";
+  printContainer(html);
 }
 
 // ============ 活動テンプレート ============
@@ -2654,10 +2740,21 @@ function importBackup() {
       var data = JSON.parse(reader.result);
       if (data.app !== BACKUP_MAGIC) { alert("このアプリのバックアップファイルではありません"); return; }
       BACKUP_KEYS.forEach(function(k) {
-        if (typeof data[k] === "string") localStorage.setItem(k, data[k]);
+        if (typeof data[k] === "string") saveLS(k, data[k]);
         else localStorage.removeItem(k);
       });
+      // 取り込み後のメモリ状態を初期化（旧データ由来の表示不整合を防ぐ）
+      currentYM = currentYMKey();
+      currentDaily = todayStr();
+      currentSupportDay = todayStr();
+      supportPreview = {};
+      deletedSupportKeys = {};
+      staffBreakMigrated = false;
+      currentIncidentId = null;
+      incidentFormFrom = "main";
       alert("バックアップを取り込みました");
+      renderSupportGroupField();
+      renderSupportCareGroupField();
       showScreen("screen-main");
     } catch(e) {
       alert("ファイルを読み込めませんでした（形式が正しくありません）");
@@ -2671,7 +2768,9 @@ renderNameList();
 renderSupportGroupField();
 renderSupportCareGroupField();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(function(){});
+  navigator.serviceWorker.register("sw.js").catch(function(err) {
+    console.warn("Service Worker の登録に失敗しました:", err);
+  });
 }
 </script>
 </body>
