@@ -489,8 +489,8 @@ table.print-table.support-table th:nth-child(4), table.print-table.support-table
       <span class="ym" id="supportDate"></span>
       <button onclick="changeSupportDay(1)">翌日 ▶</button>
     </div>
-    <button class="save-btn" onclick="bulkCreateMissingSupport()" style="margin-bottom:14px;background:#e8f0fe;color:#1a73e8">打刻済みで記録の無い日を一括作成</button>
-    <button class="save-btn" onclick="deleteAllSupportRecords()" style="margin-bottom:14px;background:#fdecea;color:#d93025">個別支援記録をすべて削除</button>
+    <button id="bulkCreateSupportBtn" class="save-btn" onclick="bulkCreateMissingSupport()" style="margin-bottom:14px;background:#e8f0fe;color:#1a73e8;display:none">打刻済みで記録の無い日を一括作成</button>
+    <button id="deleteAllSupportBtn" class="save-btn" onclick="deleteAllSupportRecords()" style="margin-bottom:14px;background:#fdecea;color:#d93025;display:none">個別支援記録をすべて削除</button>
     <div id="supportForm"></div>
   </div>
 </div>
@@ -701,6 +701,9 @@ var PASSWORDS_SHA256 = [
   "c5f011b4b1fce43e38aa776d1430cab5067085a85e155f2fa678f03e78eae7ef", // 0556
   "9d6aa3d89c0171b9c2ccd57e6d41ccec3053d3c3f118386e7f10b89ebaa7b8e4"  // 556
 ];
+// 5560で認証した場合のみ、一括作成・一括削除などの高度な操作を表示する
+var ADVANCED_SUPPORT_HASH = "26adad3a50f1cbe2117eef089088a79f057463f17206ed6914af4914f1e3c267"; // 5560
+var advancedSupportUnlocked = false;
 var PW_FAILS = 0;
 var PW_LOCK_UNTIL = 0;
 var PW_MAX_FAILS = 5;
@@ -1057,6 +1060,7 @@ function checkManagePw() {
       PW_LOCK_UNTIL = 0;
       input.value = "";
       err.textContent = "";
+      advancedSupportUnlocked = (hash === ADVANCED_SUPPORT_HASH);
       showScreen("screen-manage-menu");
     } else {
       PW_FAILS++;
@@ -1690,9 +1694,9 @@ function buildSupportSheet(person, ym) {
   if (!count) return "";
   var html = '<div class="sheet support-sheet">';
   html += '<div class="doc-head"><p class="facility">就労継続支援B型ココロオドル</p><p class="docname">個別支援記録</p></div>';
-  html += '<p class="person-line"><span>氏名：' + escapeHtml(person.name) + '</span><span>作業グループ：' + escapeHtml(userGroup(person)) + '</span><span>支援グループ：' + escapeHtml(userCareGroup(person)) + '</span><span>期間：' + ym.split("-")[0] + "年" + Number(ym.split("-")[1]) + "月</span></p>";
+  html += '<p class="person-line"><span>氏名：' + escapeHtml(person.name) + '</span><span>作業グループ：' + escapeHtml(userGroup(person)) + '</span><span>期間：' + ym.split("-")[0] + "年" + Number(ym.split("-")[1]) + "月</span></p>";
   html += '<table class="print-table support-table"><thead><tr><th>日付</th><th>曜日</th><th>記録内容</th><th>記録者</th></tr></thead><tbody>' + rows + '</tbody></table>';
-  html += '<div class="doc-foot"><span>作成日：' + printDateStr() + '</span><div class="sig-field">管理者（確認・押印）<span class="sig-line"></span></div></div>';
+  html += '<div class="doc-foot"><span>記録者　齊藤輝之</span><span>管理者（　　印　　）</span></div>';
   html += '</div>';
   return html;
 }
@@ -2203,6 +2207,10 @@ function supportRowBaseText(p, s) {
 
 function renderSupport() {
   document.getElementById("supportDate").textContent = supportDayLabel(currentSupportDay);
+  var bulkBtn = document.getElementById("bulkCreateSupportBtn");
+  var delBtn = document.getElementById("deleteAllSupportBtn");
+  if (bulkBtn) bulkBtn.style.display = advancedSupportUnlocked ? "" : "none";
+  if (delBtn) delBtn.style.display = advancedSupportUnlocked ? "" : "none";
   var list = loadStaff();
   var recs = loadRecords();
   var sup = loadSupport();
