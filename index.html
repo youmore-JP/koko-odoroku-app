@@ -490,6 +490,7 @@ table.print-table.support-table th:nth-child(4), table.print-table.support-table
       <button onclick="changeSupportDay(1)">翌日 ▶</button>
     </div>
     <button class="save-btn" onclick="bulkCreateMissingSupport()" style="margin-bottom:14px;background:#e8f0fe;color:#1a73e8">打刻済みで記録の無い日を一括作成</button>
+    <button class="save-btn" onclick="deleteAllSupportRecords()" style="margin-bottom:14px;background:#fdecea;color:#d93025">個別支援記録をすべて削除</button>
     <div id="supportForm"></div>
   </div>
 </div>
@@ -2341,6 +2342,22 @@ function deleteSupportRecord(key) {
   saveSupport(sup);
   deletedSupportKeys[key] = true;
   renderSupport();
+}
+
+// 個別支援記録の一括全削除（打刻データには触れない。削除後は「打刻済みで記録の無い日を一括作成」で作り直せる）
+function deleteAllSupportRecords() {
+  var sup = loadSupport();
+  var count = Object.keys(sup).length;
+  if (count === 0) {
+    alert("削除する個別支援記録がありません");
+    return;
+  }
+  if (supportFormDirty() && !confirm("未保存の編集内容があります。全削除を続けますか？")) return;
+  if (!confirm("個別支援記録 " + count + "件をすべて削除します。\nこの操作は取り消せません。\n（打刻データには触れません。削除後、名簿のグループ分けを直してから「打刻済みで記録の無い日を一括作成」で作り直せます）\nよろしいですか？")) return;
+  saveSupport({});
+  deletedSupportKeys = {};
+  renderSupport();
+  alert("個別支援記録 " + count + "件を削除しました");
 }
 
 // 個別支援記録フォームに未保存の変更があるか
